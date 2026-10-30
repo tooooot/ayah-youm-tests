@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>آية اليوم — متابعة الأب</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0f3d33">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" href="/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;700&display=swap">
+<link rel="stylesheet" href="/app.css">
+<script>document.head.insertAdjacentHTML('beforeend','<link rel="manifest" href="/manifest/p/'+location.pathname.split('/')[2]+'.json">')</script>
+</head>
+<body>
+<div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
+<script src="/common.js"></script>
+<script src="/mushaf.js"></script>
+<script>
+const PT = location.pathname.split('/')[2];
+const app = $('#app');
+let D = null, SURAHS = [];
+
+async function load() {
+  try {
+    await Mushaf.init();
+    if (!SURAHS.length) SURAHS = (await (await fetch('/data/quran.json')).json()).map(s => ({ n: s.n, name: s.name }));
+    D = await api('parent/' + PT); render();
+  } catch (e) { app.replaceChildren(el('div', { class: 'card' }, el('h2', {}, 'الرابط غير صحيح'))); }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && D) load(); });
+
+function surahSelect(value) {
+  return el('select', {}, SURAHS.map(s => el('option', { value: s.n, selected: s.n === value }, `${s.name} (${AR_DIGITS(s.n)})`)));
+}
+
+function kidForm(kid, onDone) {
+  const f = {
+    name: el('input', { value: kid ? kid.name : '', placeholder: 'اسم الولد' }),
+    age: el('input', { type: 'number', min: 4, max: 18, value: kid ? kid.age : 8 }),
+    start: surahSelect(kid ? kid.start : 114),
+    reward: el('input', { value: kid ? kid.reward : '', placeholder: 'مثال: نزهة أو وجبة يختارها' }),
+    days: el('input', { type: 'number', min: 3, max: 60, value: kid ? kid.rewardDays : 7 }),
+    time: el('input', { type: 'time', value: kid ? kid.time : '06:30' }),
+  };
+  if (!kid) f.age.addEventListener('change', () => { f.start.value = +f.age.value >= 10 ? 67 : 114; });
+  const row = (l, i) => el('div', {}, el('label', {}, l), i);
+  return el('div', { class: 'card' },
+    el('h2', {}, kid ? 'تعديل ' + kid.name : 'إضافة ولد'),
+    row('الاسم', f.name), row('العمر', f.age),
+    row('تبدأ الخطة من سورة (آية واحدة يومياً)', f.start),
+    row('الجائزة عند الالتزام (اختياري)', f.reward), row('عدد الأيام المتواصلة للجائزة', f.days),
+    row('وقت التذكير اليومي (للتقويم)', f.time),
+    el('button', { class: 'btn', onclick: async () => {
+      const b = { name: f.name.value, age: +f.age.value, start: +f.start.value, reward: f.reward.value, rewardDays: +f.days.value, time: f.time.value };
+      try { await api('parent/' + PT + '/kids' + (kid ? '/' + kid.id : ''), kid ? 'PUT' : 'POST', b); await load(); onDone && onDone(); }
+      catch (e) { alert(e.message); }
+    } }, 'حفظ'),
+    kid ? el('button', { class: 'btn ghost', onclick: load }, 'إلغاء') : null);
+}
+
+function kidCard(k) {
+  const link = `${D.origin}/k/${k.token}`;
+  const card = el('div', { class: 'card' });
+  card.append(
+    el('div', { class: 'row' }, el('h2', {}, `${k.name} (${AR_DIGITS(k.age)} سنة)`),
+      el('span', { class: 'badge' }, k.newToday ? '✅ سمّع اليوم' : 'لم يسمّع بعد')),
+    el('div', { class: 'mute' }, k.finished ? 'أتمّ خطته' : `الآية التالية: ${k.current} — ${(Mushaf.describe(k.next.key) || {}).text || ''}`),
+    el('div', { class: 'row' },
+      el('div', {}, el('span', { class: 'big-num' }, AR_DIGITS(k.memorized)), ' آية محفوظة'),
+      el('div', { class: 'mute' }, `متواصل: ${AR_DIGITS(k.streak)} يوم · هذا الأسبوع: ${AR_DIGITS(k.weekNew)}/7 · مراجعات مستحقة: ${AR_DIGITS(k.reviewsDue)}`)),
+    k.avgNewSecs ? el('div', { class: 'mute' }, `متوسط زمن درس الآية الجديدة: ${(k.avgNewSecs / 60).toFixed(1)} دقيقة${k.avgReviewSecs ? ' · المراجعة: ' + (k.avgReviewSecs / 60).toFixed(1) + ' د' : ''} (آخر 7 دروس)`) : '',
+    el('div', { class: 'dots', title: 'آخر 14 يوماً' }, k.last14.map(on => el('i', { class: 'dot' + (on ? ' on' : '') }))));
+
+  if (k.reward) {
+    const done = k.rewardProg >= k.rewardDays;
+    card.append(el('div', { class: 'bar' }, el('i', { style: `width:${Math.round(100 * k.rewardProg / k.rewardDays)}%` })),
+      el('div', { class: 'mute' }, `الجائزة: ${k.reward} (${AR_DIGITS(k.rewardProg)}/${AR_DIGITS(k.rewardDays)})`));
+    if (done) card.append(el('button', { class: 'btn gold', onclick: async () => { await api(`parent/${PT}/kids/${k.id}/reward-given`, 'POST', {}); load(); } }, '🎁 حان وقت الجائزة — سلّمتُها'));
+  }
+  if (k.pending.length) {
+    card.append(el('div', { class: 'note' }, el('b', {}, 'بانتظار تأكيدك (سمّع لك مباشرة):'),
+      ...k.pending.map(p => el('div', { class: 'row' }, el('span', {}, `${p.label} — ${p.date}`),
+        el('span', {},
+          el('button', { class: 'btn sm', onclick: async () => { await api(`parent/${PT}/confirm`, 'POST', { sid: p.sid, ok: true }); load(); } }, 'صحيح'),
+          el('button', { class: 'btn sm ghost', onclick: async () => { await api(`parent/${PT}/confirm`, 'POST', { sid: p.sid, ok: false }); load(); } }, 'يعيد'))))));
+  }
+  const copy = async () => {
+    try { if (navigator.share) await navigator.share({ title: 'آية اليوم', text: `رابط ${k.name}`, url: link }); else { await navigator.clipboard.writeText(link); alert('نُسخ الرابط'); } }
+    catch (e) { prompt('انسخ الرابط:', link); }
+  };
+  card.append(el('div', {},
+    el('button', { class: 'btn sm', onclick: copy }, 'رابط ' + k.name),
+    el('a', { class: 'btn sm ghost', href: `/api/parent/${PT}/kids/${k.id}/ics` }, '⏰ تذكير يومي'),
+    el('button', { class: 'btn sm ghost', onclick: () => card.replaceWith(kidForm(k)) }, 'تعديل'),
+    el('button', { class: 'btn sm ghost', onclick: async () => { if (confirm(`حذف ${k.name} وكل سجله نهائياً؟`)) { await api(`parent/${PT}/kids/${k.id}`, 'DELETE'); load(); } } }, 'حذف')));
+  return card;
+}
+
+function render() {
+  const nodes = [el('h1', {}, 'متابعة ' + D.family),
+    el('p', { class: 'mute' }, 'هذه الصفحة لك وحدك: لا تشارك رابطها. أعطِ كل ولد رابطه الخاص من زر «رابط الولد».')];
+  if (!D.kids.length) nodes.push(el('div', { class: 'note' }, 'ابدأ بإضافة أولادك أدناه.'));
+  D.kids.forEach(k => nodes.push(kidCard(k)));
+  nodes.push(kidForm(null));
+  nodes.push(el('p', { class: 'mute' }, 'الصوت: الحصري (المعلّم). التسميع بالصوت يعمل على Chrome في أندرويد وبعض إصدارات آيفون؛ وإن لم يعمل يضغط الولد «سمّعتها لأبي» وتؤكدها أنت هنا.'));
+  app.replaceChildren(...nodes);
+}
+load();
+</script>
+</body>
+</html>

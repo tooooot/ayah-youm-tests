@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="screen-orientation" content="portrait">
+<title>آية اليوم</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0f3d33">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" href="/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Noto+Naskh+Arabic:wght@400;700&display=swap">
+<link rel="stylesheet" href="/app.css">
+<script>document.head.insertAdjacentHTML('beforeend','<link rel="manifest" href="/manifest/k/'+location.pathname.split('/')[2]+'.json">')</script>
+</head>
+<body>
+<div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
+<script src="/common.js"></script>
+<script src="/mushaf.js"></script>
+<script>
+try { screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait').catch(() => {}); } catch (_) {}
+const TOKEN = location.pathname.split('/')[2];
+const app = $('#app');
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let S = null;            // حالة الولد من الخادم
+let audio = null;
+
+let DOCK = null, ZOOM = null, RO = null, PLAN = {}, CENTER = null;
+function clearDock() { if (DOCK) { DOCK.remove(); DOCK = null; } if (ZOOM) { ZOOM.remove(); ZOOM = null; } if (RO) { RO.disconnect(); RO = null; } app.style.paddingBottom = ''; app.style.paddingTop = ''; app.classList.remove('win'); app.style.top = app.style.bottom = ''; CENTER = null; }
+let PEND = null;
+const show = (...nodes) => {
+  LOOP++; stopAudio(); clearDock(); app.replaceChildren(...nodes); window.scrollTo(0, 0);
+  document.body.classList.toggle('paper', !!PEND);   // شاشة الدرس: ورق المصحف البيج
+  if (PEND) {   // الشريط الذي جُهّز لهذه الشاشة
+    ({ dock: DOCK, zoom: ZOOM } = PEND); PEND = null;
+    document.body.append(ZOOM, DOCK);
+    app.classList.add('win');   // نافذة ثابتة بين بطاقة النص والشريط: لا تمرير أبداً، والآية في وسطها
+    RO = new ResizeObserver(() => { app.style.top = ZOOM.offsetHeight + 'px'; app.style.bottom = DOCK.offsetHeight + 'px'; CENTER && CENTER(); });
+    RO.observe(ZOOM); RO.observe(DOCK);
+    RO.observe(DOCK);
+  }
+};
+// شريط تحكّم ثابت أسفل الشاشة + لوحة «النص الكبير» تُفتح فوقه؛ الصفحة تبقى مرئية فوقهما. يُستدعى قبل show()
+function setDock(zoomNodes, ...nodes) {
+  const dock = el('div', { class: 'dock' }, el('div', { class: 'dock-in' }, nodes));
+  const zoom = el('div', { class: 'zoombox' }, zoomNodes);
+  PEND = { dock, zoom };
+}
+// يضع الآية في وسط النافذة فوراً (بلا حركة ولا تمرير)؛ إن كانت أطول من النافذة تُحاذى من أعلاها
+function centerAyah(c) {
+  const fit = () => {
+    const pe = c.el, win = app.clientHeight; if (!win || !c.words.length) return;
+    pe.style.transform = 'none';
+    const p0 = pe.getBoundingClientRect().top;
+    const tops = c.words.map(w => w.getBoundingClientRect()), top = Math.min(...tops.map(r => r.top)) - p0, bot = Math.max(...tops.map(r => r.bottom)) - p0;
+    let y = bot - top >= win - 24 ? top - 12 : top - (win - (bot - top)) / 2;
+    y = Math.max(-8, Math.min(y, pe.offsetHeight + 16 - win)); if (pe.offsetHeight + 16 <= win) y = -8;
+    pe.style.transform = `translateY(${-y - 0}px)`;
+  };
+  CENTER = fit; fit();
+}
+function stopAudio() { if (audio) { audio.onended = null; audio.pause(); audio = null; } }
+const audioOf = key => new Audio('/audio/' + key + '.mp3');
+
+async function load() {
+  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json').then(r => r.json()).catch(() => ({})); S = await api('kid/' + TOKEN); home(); }
+  catch (e) { show(el('div', { class: 'card' }, el('h2', {}, 'الرابط غير صحيح'), el('p', { class: 'mute' }, 'اطلب من أبيك الرابط الخاص بك.'))); }
+}
+
+function home() {
+  const nodes = [];
+  const hero = el('div', { class: 'hero' },
+    el('div', {}, 'السلام عليكم يا ' + S.name),
+    el('div', { class: 'big-num' }, AR_DIGITS(S.streak)),
+    el('div', {}, S.streak === 1 ? 'يوم متواصل' : 'أيام متواصلة'));
+  if (S.reward) {
+    hero.append(el('div', { class: 'bar' }, el('i', { style: `width:${Math.round(100 * S.rewardProg / S.rewardDays)}%` })),
+      el('div', { class: 'mute' }, `الجائزة بعد ${AR_DIGITS(S.rewardDays)} أيام: ${S.reward} (${AR_DIGITS(S.rewardProg)}/${AR_DIGITS(S.rewardDays)})`));
+  }
+  nodes.push(hero);
+
+  if (S.newToday) {
+    nodes.push(el('div', { class: 'card' }, el('h2', {}, 'أحسنت! أتممت آية اليوم ✅'),
+      el('p', { class: 'mute' }, S.pending.length ? 'بانتظار أن يؤكد أبوك تسميعك.' : 'إن أردت المزيد فاختر أدناه.'),
+      S.todayUnit ? el('button', { class: 'btn ghost', onclick: () => lesson(S.todayUnit, 'practice') }, `🔁 درّب آية اليوم: ${S.todayUnit.name} ${S.todayUnit.i}`) : null,
+      S.next && S.todayCount < 4 ? el('button', { class: 'btn gold', onclick: () => lesson(S.next, 'new', true) }, `➕ آية إضافية: ${S.next.name} ${S.next.i}`) : null));
+  } else if (S.next) {
+    nodes.push(el('div', { class: 'card' },
+      el('div', { class: 'mute' }, 'آية اليوم'),
+      el('h1', {}, `سورة ${S.next.name} — الآية ${AR_DIGITS(S.next.i)}`),
+      el('button', { class: 'btn gold', onclick: () => lesson(S.next, 'new') }, 'ابدأ الآن')));
+  } else {
+    nodes.push(el('div', { class: 'card' }, el('h2', {}, 'ما شاء الله! أتممت كل ما في خطتك 🌟'), el('p', { class: 'mute' }, 'اطلب من أبيك خطة جديدة.')));
+  }
+  if (S.reviews.length) {
+    nodes.push(el('div', { class: 'card' }, el('h2', {}, 'مراجعة اليوم'),
+      ...S.reviews.map(u => el('button', { class: 'btn ghost', onclick: () => lesson(u, 'review') }, `راجع: ${u.name} ${AR_DIGITS(u.i)}`))));
+  }
+  nodes.push(el('p', { class: 'mute say' }, `حفظتَ ${AR_DIGITS(S.memorized)} آية بفضل الله`));
+  show(...nodes);
+}
+
+// ───── الدرس ─────
+// ١ اعرف مكانها في صفحة المصحف ← ٢ حلقة استماع وترديد متواصلة (يخفى النص تدريجياً في الصفحة نفسها) ← ٣ تسميع بالصوت
+const MINSAY = window.__fast ? 20 : 1200;   // أقل مدة صمت للترديد بين تلاوتين (ملي ثانية)
+let LOOP = 0;                                // يُبطل حلقة التكرار عند الخروج من الشاشة
+
+function lesson(u, kind, extra) {
+  const full = kind !== 'review';   // new وpractice: استماع وترديد ثم تسميع؛ review: تسميع فقط
+  const L = { fails: 0 }, T0 = Date.now();
+  const words = u.t.split(' ');
+  const run = () => (full ? stepLoop : stepRecite)();
+
+  // بطاقة النص الكبير في أعلى الشاشة (العنوان يميناً، النص في الوسط) — الإخفاء يُطبَّق على الصفحة أيضاً
+  function strip() {
+    const spans = words.map(w => el('span', { class: 'w' }, w));
+    spans.forEach(s => s.addEventListener('click', () => s.classList.remove('hid')));
+    const fs = words.length <= 6 ? 2.6 : words.length <= 12 ? 2.2 : words.length <= 20 ? 1.85 : 1.55;
+    const box = el('div', { class: 'quran big', style: `font-size:${fs}rem` }, spans);
+    return { box,
+      setHidden: fn => spans.forEach((s, i) => s.classList.toggle('hid', !!fn(i, spans.length))),
+      setDim: fn => spans.forEach((s, i) => s.classList.toggle('dim', !!fn(i))),
+      setCur: fn => spans.forEach((s, i) => s.classList.toggle('cur', !!fn(i))) };
+  }
+  const topCard = box => [el('button', { class: 'backbtn', onclick: home, 'aria-label': 'رجوع' }, '✕'),
+    el('div', { class: 'ttl' }, `سورة ${u.name} — ${AR_DIGITS(u.i)}`), box];
+  // صفحة المصحف بخطها الأصلي: الآية ملوّنة والباقي ضبابي؛ تُمرَّر الشاشة تلقائياً إلى الآية
+  function page() {
+    const host = el('div'), box = { c: null };
+    Mushaf.render(host, u.key).then(c => { box.c = c; if (box.onReady) box.onReady(c); centerAyah(c); }).catch(() => {});
+    return { host, box };
+  }
+  const playBtn = (label = '🔊 استمع') => el('button', { class: 'btn ghost', onclick: () => { stopAudio(); audio = audioOf(u.key); audio.play().catch(() => {}); } }, label);
+
+  // خطة الحلقة: ١٠ استماعات متتالية تلقائياً ثم ١٠ ترديدات (القارئ يقرأ والطفل يردّد) ثم التسميع.
+  // الآية الطويلة (>12 كلمة): مقطعاً مقطعاً ثم كاملة. سقف الزمن ≈ 5 دقائق (التقليل حتى 5)
+  function makePlan() {
+    const info = PLAN[u.key] || {}, CAP = 300;
+    const lvOf = (r, n) => r < Math.ceil(n * .25) ? 0 : r < Math.ceil(n * .5) ? 1 : r < Math.ceil(n * .75) ? 2 : 3;
+    const dOf = e => (e.w ? e.fe - e.fs : (e.slow ? info.ds : info.df)) || 4;
+    const total = p => p.reduce((t, e) => t + dOf(e) + (e.listen ? .4 : Math.max(1.2, dOf(e))), 0);
+    if (info.ch) {
+      const build = (rc, rf) => {
+        const out = [];
+        info.ch.forEach(([w0, w1, fs, fe], c) => {
+          for (let i = 0; i < rc; i++) out.push({ slow: false, w: [w0, w1], fs, fe, lv: lvOf(i, rc), tag: `الجزء ${c + 1}/${info.ch.length}`, n: i + 1, of: rc });
+        });
+        for (let i = 0; i < rf; i++) out.push({ slow: false, w: null, lv: Math.min(3, i + 1), tag: 'كاملة', n: i + 1, of: rf });
+        return out;
+      };
+      let rc = 5, rf = 3, p = build(rc, rf);
+      while (total(p) > CAP && (rc > 3 || rf > 2)) { if (rc > 3) rc--; else rf--; p = build(rc, rf); }
+      return p;
+    }
+    const build = n => [
+      ...Array.from({ length: n }, (_, i) => ({ slow: i === 0, listen: true, w: null, lv: 0, tag: 'استماع', n: i + 1, of: n })),
+      ...Array.from({ length: n }, (_, i) => ({ slow: false, w: null, lv: lvOf(i, n), tag: 'ردّد', n: i + 1, of: n }))];
+    let n = 10, p = build(n);
+    while (total(p) > CAP && n > 5) { n--; p = build(n); }
+    return p;
+  }
+
+  function stepLoop() {
+    const plan = makePlan();
+    const st = strip(), pg = page();
+    // لا إخفاء للكلمات: الآية كاملة دائماً، وغير المقطع الحالي يخفت فقط؛ والكلمة المقروءة تتلوّن
+    const mark = i => { st.setCur(j => j === i); pg.box.c && pg.box.c.setCur(j => j === i); };
+    const apply = e => {
+      const w = e && e.w, dim = w ? (i => i < w[0] || i >= w[1]) : (() => false);
+      st.setDim(dim); if (pg.box.c) pg.box.c.setDim(dim);
+    };
+    pg.box.onReady = c => apply(plan[Math.min(r, plan.length - 1)]);
+    const info = PLAN[u.key] || {};
+    const wt = words.map(w => (w.replace(/[^ء-ي]/g, '').length || 1) + .5);
+    // تلوين الكلمة الجارية: من توقيت الكلمات الدقيق (Quran Foundation) ومتزامناً مع زمن التشغيل الفعلي للصوت؛
+    // وإن لم يتوفر التوقيت فبالنسبة لطول الكلمة. slow=true: ملف الحصري (يكرّر المعلّم بعض الكلمات، فقد يعود التلوين للوراء وهذا صحيح)
+    let FID = 0;
+    function follow(e, slow, ms, id, a) {
+      const my = ++FID;
+      const segs = slow ? info.ss : info.fs, [w0, w1] = e.w || [0, words.length];
+      const T0 = slow || !e.w ? 0 : e.fs, T1 = slow ? info.ds : e.w ? e.fe : info.df, t0 = performance.now();
+      const tot = wt.slice(w0, w1).reduce((x, y) => x + y, 0);
+      const tick = () => {
+        if (id !== LOOP || my !== FID) return;
+        const f = (performance.now() - t0) / ms;
+        if (f >= 1) { mark(-1); return; }
+        let cur = -1;
+        if (segs && segs.length) {
+          const t = a && a.currentTime > 0 ? a.currentTime : T0 + f * (T1 - T0);
+          for (const s of segs) { if (s[1] <= t + .02) cur = s[0]; else break; }
+          if (e.w && (cur < w0 || cur >= w1)) cur = cur < w0 ? w0 : w1 - 1;
+        } else {
+          let acc = 0; cur = w1 - 1;
+          for (let i = w0; i < w1; i++) { acc += wt[i] / tot; if (f < acc) { cur = i; break; } }
+        }
+        mark(cur); requestAnimationFrame(tick);
+      };
+      tick();
+    }
+    const banner = el('div', { class: 'turn' }, ''), counter = el('div', { class: 'mute say' });
+    const barI = el('i', { style: 'width:0%' }), bar = el('div', { class: 'bar say-bar' }, barI);
+    const lvlI = el('i', { style: 'width:0%' }), lvl = el('div', { class: 'bar lvl' }, lvlI);
+    const main = el('button', { class: 'btn', disabled: true, onclick: () => main.onact && main.onact() }, '…');
+    const pause = el('button', { class: 'btn ghost pausebtn', onclick: toggle }, '⏸');
+    let r = 0, playing = false, skip = null;
+    const slowUrl = `/audio/${u.key}.mp3`, fastUrl = `/audio-sud/${u.key}.mp3`;
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    const dOf = e => (e.w ? e.fe - e.fs : (e.slow ? info.ds : info.df)) || 4;
+    function playOnce(e, id) {   // يرجع مدة ما سُمع بالثواني
+      return new Promise(res => {
+        const go1 = (slow, fallback) => {
+          const a0 = e.fs, a1 = e.fe, seg = !!e.w && !slow;
+          const a = audio = new Audio(slow ? slowUrl : fastUrl); let timer = null, started = false;
+          const fail = () => { clearTimeout(timer); if (fallback) go1(true, false); else res(4); };
+          const end = () => { clearTimeout(timer); a.onended = null; res(window.__fast ? 0.03 : seg ? a1 - a0 : dur(a)); };
+          const dur = x => (x.duration > 0 && isFinite(x.duration) ? x.duration : 4);
+          const start = () => {
+            if (started) return; started = true;
+            if (seg && a0 > 0) { try { a.currentTime = a0; } catch (_) {} }
+            a.play().then(() => {
+              follow(e, slow, dOf({ ...e, slow }) * 1000, id, a);
+              if (seg) timer = setTimeout(() => { a.pause(); end(); }, (a1 - (a0 > 0 ? a0 : 0)) * 1000);
+            }).catch(fail);
+          };
+          a.onended = end; a.onerror = fail;
+          if (seg && a0 > 0 && !(a.readyState >= 1)) { a.onloadedmetadata = start; setTimeout(start, 1500); } else start();
+        };
+        go1(e.slow, !e.slow && !e.w);
+      });
+    }
+    function setBar(ms) {
+      barI.style.transition = 'none'; barI.style.width = '0%'; void barI.offsetWidth;
+      if (ms) { barI.style.transition = `width ${ms}ms linear`; barI.style.width = '100%'; }
+    }
+    // مستوى صوت الطالب (إن سمح بالميكروفون): يتحرّك الشريط مع صوته، فيعرف أنه مسموع
+    let an = null, mstream = null, voiced = 0;
+    async function openMic() {
+      if (window.__fast || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+      try {
+        mstream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        const ac = new (window.AudioContext || window.webkitAudioContext)(), src = ac.createMediaStreamSource(mstream);
+        an = ac.createAnalyser(); an.fftSize = 512; src.connect(an); an.ac = ac;
+      } catch (_) { an = null; }
+    }
+    function closeMic() { try { mstream && mstream.getTracks().forEach(t => t.stop()); an && an.ac.close(); } catch (_) {} an = null; mstream = null; }
+    function level() {
+      if (!an) return 0;
+      const buf = new Uint8Array(an.fftSize); an.getByteTimeDomainData(buf);
+      let s = 0; for (const v of buf) { const x = (v - 128) / 128; s += x * x; }
+      return Math.sqrt(s / buf.length);
+    }
+    const chime = (hz, ms = 140) => {
+      try { navigator.vibrate && navigator.vibrate(hz > 600 ? 70 : 0);
+        if (window.__fast) return;
+        const ac = chime.ac = chime.ac || new (window.AudioContext || window.webkitAudioContext)(), o = ac.createOscillator(), g = ac.createGain();
+        o.frequency.value = hz; g.gain.value = .12; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + ms / 1000);
+      } catch (_) {}
+    };
+    function setTurn(mine, text) {
+      banner.textContent = text; banner.className = 'turn ' + (mine ? 'mine' : 'listen');
+      ZOOM && ZOOM.classList.toggle('mine', mine);
+      lvl.style.display = mine && an ? '' : 'none';
+    }
+    // دور الطالب: بمقدار طول الآية؛ زر «انتهيت» يتخطّى الانتظار
+    async function myTurn(ms, id, e) {
+      setTurn(true, '🎙 دورك — اقرأ الآن'); chime(880);
+      main.disabled = false; main.textContent = '✓ انتهيت'; main.onact = () => skip && skip();
+      setBar(ms); follow(e, false, ms, id, null);
+      voiced = 0; const t0 = performance.now(); let peak = 0;
+      const iv = setInterval(() => { const l = level(); peak = Math.max(peak, l); if (l > .03) voiced += 60; lvlI.style.width = Math.min(100, l * 500) + '%'; }, 60);
+      await new Promise(res => { skip = res; setTimeout(res, ms); });
+      clearInterval(iv); skip = null; lvlI.style.width = '0%'; main.disabled = true; main.textContent = '…'; main.onact = null;
+      return an && performance.now() - t0 > 1500 && voiced < 150;   // true = لم يُسمع صوته
+    }
+    async function loop(id) {
+      while (r < plan.length && id === LOOP) {
+        const e = plan[r];
+        apply(e); counter.textContent = `${e.tag} ${e.n}/${e.of}`;
+        setTurn(false, e.listen ? '🔊 استمع للقارئ' : '🔊 اسمع القارئ ثم اقرأ'); setBar(0);
+        const d = await playOnce(e, id);
+        if (id !== LOOP) return;
+        FID++; mark(-1);
+        if (e.listen) await sleep(window.__fast ? 5 : 400);
+        else {
+          const quiet = await myTurn(Math.max(MINSAY, d * 1000), id, e);
+          if (id !== LOOP) return;
+          if (quiet && !e.retried) { e.retried = true; setTurn(true, '🔊 ما سمعتُ صوتك — اقرأ بصوت عالٍ'); await sleep(1200); continue; }
+        }
+        if (id !== LOOP) return;
+        r++;
+      }
+      if (id !== LOOP) return;
+      playing = false; apply(null); mark(-1); setBar(0); r = 0; closeMic();
+      setTurn(false, '✅ أحسنت'); counter.textContent = '';
+      pause.textContent = '↻'; main.disabled = false; main.textContent = 'جاهز للتسميع'; main.onact = () => stepRecite();
+    }
+    function toggle() {
+      if (playing) { LOOP++; stopAudio(); skip && skip(); playing = false; setBar(0); mark(-1); pause.textContent = '▶'; return; }
+      playing = true; pause.textContent = '⏸'; loop(++LOOP);
+    }
+    setDock(topCard(st.box), banner, bar, lvl, counter, el('div', { class: 'btns' }, pause, main));
+    lvl.style.display = 'none';
+    show(pg.host);
+    openMic().then(() => setTimeout(toggle, 300));   // يبدأ تلقائياً
+  }
+
+  function stepRecite() {
+    const st = strip(), pg = page();
+    let peeking = false;
+    const hideAll = () => { st.box.classList.add('blur'); st.box.classList.remove('show'); pg.box.c && pg.box.c.setHidden(() => true); };
+    pg.box.onReady = hideAll;
+    const peek = () => {
+      peeking = !peeking; st.box.classList.toggle('show', peeking);
+      pg.box.c && pg.box.c.setHidden(() => !peeking);
+    };
+    st.box.classList.add('blur'); st.box.addEventListener('click', peek);
+    const msg = el('div', { class: 'say' }, '');
+    const result = el('div', { class: 'quran res' });
+    const actions = el('div');
+    let rec = null, heardAlts = [];
+
+    const mic = el('button', { class: 'mic', 'aria-label': 'ميكروفون', onclick: toggle }, '🎙');
+    function toggle() {
+      if (rec) { rec.stop(); return; }
+      if (!SR) return;
+      stopAudio(); heardAlts = []; result.replaceChildren(); actions.replaceChildren();
+      rec = new SR(); rec.lang = 'ar-SA'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 3;
+      rec.onresult = ev => {
+        heardAlts = [];
+        for (let k = 0; k < 3; k++) heardAlts.push(Array.from(ev.results).map(r => (r[k] || r[0]).transcript).join(' '));
+        msg.textContent = '… ' + heardAlts[0];
+      };
+      rec.onerror = ev => { msg.textContent = ev.error === 'not-allowed' ? 'اسمح للمتصفح باستخدام الميكروفون ثم أعد المحاولة.' : 'لم أسمعك جيداً، أعد المحاولة.'; };
+      rec.onend = () => { rec = null; mic.classList.remove('live'); evaluate(); };
+      mic.classList.add('live'); msg.textContent = '';
+      try { rec.start(); } catch (e) { rec = null; mic.classList.remove('live'); }
+    }
+
+    async function evaluate() {
+      if (!heardAlts.some(Boolean)) { msg.textContent = 'لم أسمع شيئاً. أعد.'; return; }
+      const best = heardAlts.map(h => compare(u.c, h)).sort((a, b) => b.score - a.score)[0];
+      const pct = Math.round(best.score * 100);
+      let hits = best.hit;
+      if (hits.length !== words.length) {   // «يا» تُكتب كلمة مستقلة في النص المنظَّف: نضمّها إلى التي بعدها
+        const g = []; let carry = [];
+        u.c.split(' ').forEach((t, j) => { carry.push(best.hit[j]); if (t !== 'يا') { g.push(carry.every(Boolean)); carry = []; } });
+        hits = g;
+      }
+      if (words.length === hits.length)
+        result.replaceChildren(...words.map((w, i) => el('span', { class: 'w ' + (hits[i] ? 'hit' : 'miss') }, w)));
+      if (result.childNodes.length) { st.box.style.display = 'none'; }
+      const ok = best.score >= S.threshold;
+      if (ok || (kind === 'review' && L.fails >= 1)) {
+        msg.textContent = ok ? `ما شاء الله! ${pct}%` : `${pct}% — سنراجعها غداً بإذن الله`;
+        await finish('voice', best.score);
+      } else {
+        L.fails++;
+        msg.textContent = `${pct}% — أعد المحاولة (تحتاج ${Math.round(S.threshold * 100)}%)`;
+        actions.replaceChildren(playBtn('🔊 استمع ثم أعد'));
+        if (L.fails >= 2) actions.append(parentBtn());
+      }
+    }
+    function parentBtn() {
+      return el('button', { class: 'btn ghost', onclick: () => finish(kind === 'new' ? 'pending' : 'self', 0) },
+        kind === 'new' ? 'سمّعتها لأبي (ينتظر تأكيده)' : kind === 'practice' ? 'أنهيت التدريب' : 'راجعتها بدون ميكروفون');
+    }
+    async function finish(method, score) {
+      mic.disabled = true;
+      if (kind === 'practice') { done('practice'); return; }   // تدريب: لا يُسجَّل شيء
+      try { S = await api('kid/' + TOKEN + '/result', 'POST', { key: u.key, kind, method, score, extra: !!extra, secs: Math.min(1800, Math.round((Date.now() - T0) / 1000)) }); }
+      catch (e) { msg.textContent = 'تعذّر الحفظ: ' + e.message; mic.disabled = false; return; }
+      done(method);
+    }
+    function done(method) {
+      show(el('div', { class: 'hero' },
+        el('div', { class: 'big-num' }, '🌟'),
+        el('h1', {}, method === 'pending' ? 'سُجّلت، وينتظر أبوك' : 'ما شاء الله!'),
+        el('div', {}, kind === 'new' ? `حفظتَ ${u.name} ${u.i}` : kind === 'practice' ? `ثبّتَّ ${u.name} ${u.i}` : `راجعتَ ${u.name} ${u.i}`),
+        el('div', { class: 'mute' }, `أيامك المتواصلة: ${S.streak}`)),
+        el('button', { class: 'btn gold', onclick: home }, 'رجوع'));
+    }
+
+    const dockNodes = [msg];
+    if (SR) dockNodes.push(mic); else dockNodes.push(el('div', { class: 'note' }, 'هذا المتصفح لا يدعم التسميع بالصوت. استخدم Chrome على أندرويد، أو سمّع لأبيك.'), parentBtn());
+    dockNodes.push(actions);
+    setDock([...topCard(st.box), result], ...dockNodes);
+    show(pg.host);
+  }
+
+  run();
+}
+load();
+</script>
+</body>
+</html>
