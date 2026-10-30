@@ -99,7 +99,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
             ch = 'ch' in plan[key]
             check(f'درس {kind} ({key}): ينتهي ويظهر «جاهز للتسميع»', r['ready'], f"{r['secs']:.0f}s")
             check(f'درس {kind}: تلوين البطاقة = تلوين الصفحة', r['mism'] == 0, r['mism'])
-            if not ch: check(f'درس {kind}: عشر استماعات وعشر ترديدات', r['plays'] == 20 and r['slow'] == 1, r)
+            if not ch: check(f'درس {kind}: استماعات وترديدات متساوية (10+10، وتقلّ حتى 5+5 لسقف 5 دقائق)', r['plays'] in (10, 12, 14, 16, 18, 20) and r['slow'] == 1, r['plays'])
             else: check(f'درس {kind}: مقاطع ثم كاملة', r['plays'] >= 10, r['plays'])
             check(f'درس {kind}: بانر «دورك» يظهر', r['mine'] > 0, r['seq'][:4])
             check(f'درس {kind}: زمن ≤ 330ث', r['secs'] <= 330, r['secs'])
