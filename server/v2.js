@@ -63,7 +63,7 @@ function mount(ctx) {
   }
   const famBrief = f => ({ id: f.id, name: f.name, hasPin: !!f.pinHash });
   const onboarding = a => {
-    if (!a.role) return 'role';
+    if (!a.role) return 'family';   // لا اختيار دور: من يدخل بلا دعوة يبدأ رحلة الأب/الأم
     if (a.role === 'guardian') { const f = famOf(a); return !f ? 'family' : f.kids.length ? null : 'kid'; }
     return a.profiles.length ? null : 'invite';
   };
@@ -108,6 +108,7 @@ function mount(ctx) {
     }
     // ───── الوصيّ ─────
     if (seg[0] === 'family') {
+      if (m === 'POST' && !seg[1] && !a.role) { a.role = 'guardian'; }   // إنشاء العائلة يجعل الحساب حساب أب/أم
       if (a.role !== 'guardian') return bad(403, 'للأب أو الأم فقط');
       if (m === 'POST' && !seg[1]) {
         if (famOf(a)) return bad(409, 'لديك عائلة');

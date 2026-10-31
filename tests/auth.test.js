@@ -24,7 +24,7 @@ test('نقل عائلة قديمة (رابط الأب) إلى حساب ثم ال
 test('هوية جديدة تفتح حساباً بلا دور (لا رفض «غير مرتبط»)', async () => {
   const s = await E.signIn('brand-new');
   assert.equal(s.role, null);
-  const me = await E.call(s.session, 'GET', '/api/v2/me'); assert.equal(me.j.onboarding, 'role');
+  const me = await E.call(s.session, 'GET', '/api/v2/me'); assert.equal(me.j.onboarding, 'family');
 });
 
 test('عائلة مرتبطة بحساب لا تُنقل لحساب آخر', async () => {

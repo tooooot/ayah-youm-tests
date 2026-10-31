@@ -24,12 +24,10 @@ test('ترحيل v1: الجلسة القديمة تعمل كحساب وصيّ و
 
 test('رحلة الأب: دور ← عائلة ← ولد بدعوة', async () => {
   const s = await E.signIn('dad1');
-  assert.equal((await E.call(s.session, 'GET', '/api/v2/me')).j.onboarding, 'role');
-  assert.equal((await E.call(s.session, 'POST', '/api/v2/family', { name: 'س' })).r.status, 403, 'بلا دور لا عائلة');
-  await E.call(s.session, 'POST', '/api/v2/role', { role: 'guardian' });
-  assert.equal((await E.call(s.session, 'POST', '/api/v2/role', { role: 'student' })).r.status, 409);
-  assert.equal((await E.call(s.session, 'GET', '/api/v2/me')).j.onboarding, 'family');
+  const me0 = (await E.call(s.session, 'GET', '/api/v2/me')).j; assert.equal(me0.onboarding, 'family', 'لا اختيار دور: تبدأ الرحلة مباشرة'); assert.equal(me0.account.role, null);
   const f = await E.call(s.session, 'POST', '/api/v2/family', { name: 'آل أحمد' }); assert.equal(f.j.onboarding, 'kid');
+  assert.equal((await E.call(s.session, 'GET', '/api/v2/me')).j.account.role, 'guardian', 'إنشاء العائلة يجعله وصياً');
+  assert.equal((await E.call(s.session, 'POST', '/api/v2/role', { role: 'student' })).r.status, 409);
   assert.equal((await E.call(s.session, 'POST', '/api/v2/family', { name: 'ثانية' })).r.status, 409);
   const k = await E.call(s.session, 'POST', '/api/v2/kids', { name: 'سارة', age: 9, habits: ['ayah', 'word', 'x'] });
   assert.equal(k.r.status, 200); assert.deepEqual(k.j.habits, ['ayah', 'word']); assert.equal(k.j.invite.status, 'invited'); assert.match(k.j.invite.url, /\/i\//);
@@ -42,7 +40,6 @@ test('الابن يقبل الدعوة بحسابه ويرى ملفه فقط', a
   const tokA = a.invite.url.split('/i/')[1];
   assert.deepEqual((await E.j('/api/v2/invites/' + tokA)).j, { kid: 'أحمد', family: 'آل خالد', claimed: false });
   const kid = (await E.signIn('kid-ahmad')).session;
-  assert.equal((await E.call(kid, 'GET', '/api/v2/me')).j.onboarding, 'role');
   const c = await E.call(kid, 'POST', '/api/v2/invites/' + tokA + '/claim'); assert.equal(c.r.status, 200);
   const me = (await E.call(kid, 'GET', '/api/v2/me')).j; assert.equal(me.account.role, 'student'); assert.equal(me.profiles[0].name, 'أحمد'); assert.equal(me.onboarding, null);
   assert.equal((await E.call(kid, 'GET', '/api/v2/kids/' + a.id + '/state')).r.status, 200);
