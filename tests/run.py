@@ -124,7 +124,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
             if key == '082006':
                 pg2.close(); ctx2.close(); pg2, ctx2, _ = sim(key); pg2.get_by_text('جاهز للتسميع').click(); pg2.wait_for_selector('.mic')
                 pg2.evaluate("()=>window.__say='ما غرك بربك الكريم'"); pg2.locator('.mic').click(force=True); pg2.clock.run_for(300); pg2.locator('.mic').click(force=True); pg2.clock.run_for(1500); pg2.wait_for_timeout(400)
-                n = len(W[key]); check('تلوين نتيجة آية «يا أيها» (hit/miss بعدد كلماتها)', pg2.locator('.res .w.hit, .res .w.miss').count() == n, pg2.locator('.res .w').count())
+                n = len(W[key]); check('تلوين نتيجة آية «يا أيها» (hit/miss بعدد كلماتها)', pg2.locator('.mpage .mw.f.hit, .mpage .mw.f.miss').count() == n and pg2.locator('.zoombox .quran').count() == 0, pg2.locator('.mpage .mw.f.hit').count())
             ctx2.close()
         # تغذية راجعة حيّة: الكلمات التي ينطقها تخضرّ أثناء دوره (تعرّف الكلام مُحاكى)
         ctx3 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx3.add_init_script(INIT + "window.__fast=true;window.__live=true;"); pg3 = ctx3.new_page(); pg3.on('pageerror', lambda e: errs.append(str(e)))

@@ -355,15 +355,10 @@ function lesson(u, kind, extra) {
   function stepRecite() {
     const st = strip(), pg = page();
     let peeking = false;
-    const hideAll = () => { st.box.classList.add('blur'); st.box.classList.remove('show'); pg.box.c && pg.box.c.setHidden(() => true); };
+    // لا بطاقة علوية: الصفحة نفسها هي الشاشة؛ كلمات الآية مخفية فيها (اللمس يكشف كلمة) وتُلوَّن النتيجة عليها
+    const hideAll = () => { const c = pg.box.c; if (c) { c.setHidden(() => true); c.setHit(() => false); c.setMiss(() => false); } };
     pg.box.onReady = hideAll;
-    const peek = () => {
-      peeking = !peeking; st.box.classList.toggle('show', peeking);
-      pg.box.c && pg.box.c.setHidden(() => !peeking);
-    };
-    st.box.classList.add('blur'); st.box.addEventListener('click', peek);
     const msg = el('div', { class: 'say' }, '');
-    const result = el('div', { class: 'quran res' });
     const actions = el('div');
     let rec = null, heardAlts = [];
 
@@ -371,7 +366,7 @@ function lesson(u, kind, extra) {
     function toggle() {
       if (rec) { rec.stop(); return; }
       if (!SR) return;
-      stopAudio(); heardAlts = []; result.replaceChildren(); actions.replaceChildren();
+      stopAudio(); heardAlts = []; hideAll(); actions.replaceChildren();
       rec = new SR(); rec.lang = 'ar-SA'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 3;
       rec.onresult = ev => {
         heardAlts = [];
@@ -394,9 +389,7 @@ function lesson(u, kind, extra) {
         u.c.split(' ').forEach((t, j) => { carry.push(best.hit[j]); if (t !== 'يا') { g.push(carry.every(Boolean)); carry = []; } });
         hits = g;
       }
-      if (words.length === hits.length)
-        result.replaceChildren(...words.map((w, i) => el('span', { class: 'w ' + (hits[i] ? 'hit' : 'miss') }, w)));
-      if (result.childNodes.length) { st.box.style.display = 'none'; }
+      if (words.length === hits.length && pg.box.c) { const c = pg.box.c; c.setHidden(() => false); c.setHit(i => hits[i]); c.setMiss(i => !hits[i]); }
       const ok = best.score >= S.threshold;
       if (ok || (kind === 'review' && L.fails >= 1)) {
         msg.textContent = ok ? `ما شاء الله! ${pct}%` : `${pct}% — سنراجعها غداً بإذن الله`;
@@ -431,7 +424,8 @@ function lesson(u, kind, extra) {
     const dockNodes = [msg];
     if (SR) dockNodes.push(mic); else dockNodes.push(el('div', { class: 'note' }, 'هذا المتصفح لا يدعم التسميع بالصوت. استخدم Chrome على أندرويد، أو سمّع لأبيك.'), parentBtn());
     dockNodes.push(actions);
-    setDock([...topCard(st.box), result], ...dockNodes);
+    setDock(topCard(''), ...dockNodes);
+    PEND.zoom.classList.add('slim');
     show(pg.host);
   }
 
