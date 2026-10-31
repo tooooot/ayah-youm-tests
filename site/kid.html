@@ -111,16 +111,17 @@ function startV2() {
   const q = new URLSearchParams(location.search), kind = q.get('kind') || 'new', key = q.get('key');
   const u = kind === 'review' ? (S.reviews || []).find(x => x.key === key) : kind === 'practice' ? S.todayUnit : S.next;
   if (!u) return void (location.href = '/app');
-  // قبل أن يقضي الولد دقائق في الاستماع: إن كان المتصفح لا يدعم سماع التسميع نُنبّهه الآن
-  if (kind === 'new' && !SR && !window.NATIVE && !window.__skipSr) {
-    show(el('div', { class: 'card' }, el('h2', {}, 'هذا المتصفح لا يسمع التسميع'),
-      el('p', { class: 'mute' }, 'لن يستطيع ثبات سماع صوتك هنا (مثل Firefox وبعض متصفحات آيفون). افتح ثبات من Chrome على أندرويد أو الكمبيوتر، أو من تطبيق ثبات. إن أكملتَ هنا فستحتاج أن يسمعك أبوك وهو بجانبك ويؤكد.'),
-      el('button', { class: 'btn', onclick: () => lesson(u, kind, q.get('extra') === '1') }, 'أكمل رغم ذلك'),
-      el('button', { class: 'btn ghost', onclick: home }, 'رجوع')));
-    return;
-  }
-  lesson(u, kind, q.get('extra') === '1');
+  // شاشة «جاهز؟»: ضغطة المستخدم على هذه الصفحة تُجيز تشغيل الصوت (المتصفحات تمنع الصوت التلقائي بعد الانتقال بين الصفحات وفي التصفح الخفي)
+  const noSr = kind === 'new' && !SR && !window.NATIVE;
+  const label = kind === 'review' ? 'مراجعة' : kind === 'practice' ? 'تدريب' : 'آية جديدة';
+  show(el('div', { class: 'card', style: 'text-align:center;margin-top:12vh' },
+    el('div', { class: 'mute' }, label), el('h1', {}, `سورة ${u.name} — الآية ${u.i}`),
+    el('p', { class: 'mute' }, 'سنشغّل الصوت الآن: ارفع صوت الجوال وتأكد أنه ليس صامتاً.'),
+    noSr ? el('p', { class: 'note' }, 'هذا المتصفح لا يسمع التسميع بالصوت (مثل Firefox وبعض متصفحات آيفون). افتح ثبات من Chrome على أندرويد أو الكمبيوتر أو من تطبيق ثبات؛ وإن أكملتَ هنا فسيحتاج تسميعك إلى أن يسمعك أبوك ويؤكد.') : '',
+    el('button', { class: 'btn gold', onclick: () => lesson(u, kind, q.get('extra') === '1') }, 'ابدأ الدرس'),
+    el('button', { class: 'btn ghost', onclick: home }, 'رجوع')));
 }
+
 
 function home() {
   if (V2) { location.href = '/app'; return; }
@@ -284,7 +285,13 @@ function lesson(u, kind, extra) {
             a.play().then(() => {
               follow(e, slow, dOf({ ...e, slow }) * 1000, id, a);
               if (seg) timer = setTimeout(() => { a.pause(); end(); }, (a1 - (a0 > 0 ? a0 : 0)) * 1000);
-            }).catch(fail);
+            }).catch(err => {
+              if (err && err.name === 'NotAllowedError') {   // المتصفح منع الصوت التلقائي: نطلب ضغطة بدل الصمت
+                setTurn(false, '🔇 اضغط على الشاشة لتشغيل الصوت');
+                const retry = () => { document.removeEventListener('pointerdown', retry, true); if (id !== LOOP) return; started = false; start(); };
+                document.addEventListener('pointerdown', retry, true);
+              } else fail();
+            });
           };
           a.onended = end; a.onerror = fail;
           if (seg && a0 > 0 && !(a.readyState >= 1)) { a.onloadedmetadata = start; setTimeout(start, 1500); } else start();
