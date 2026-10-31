@@ -313,6 +313,11 @@ function todayTab() {
         s.next && s.todayCount < 4 ? el('button', { class: 'btn gold', onclick: () => { location.href = lessonUrl(p.kidId, 'new', null, true); } }, `آية إضافية: ${s.next.name} ${s.next.i}`) : ''));
       else cards.push(el('div', { class: 'ayahcard' }, el('div', { class: 'tag' }, `آية اليوم · سورة ${s.next.name} — ${s.next.i}`), el('div', { class: 'q' }, s.next.t), el('button', { class: 'btn gold', onclick: () => { location.href = lessonUrl(p.kidId, 'new'); } }, 'ابدأ الآن')));
     } else cards.push(empty('star', 'ما شاء الله! أتممت خطتك', 'اطلب من أبيك خطة جديدة.'));
+    if ((s.habits || []).includes('word') && CFG.kalimati) {   // كلمة اليوم (كلماتي): تُفتح برمز موقّع قصير العمر، والإنجاز يصلنا تلقائياً
+      const wd = s.habitsDone && s.habitsDone.word;
+      cards.push(el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, wd ? ic('check') : ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'كلمة اليوم'), el('div', { class: 'mute' }, wd ? 'أحسنت! أتممت كلمات اليوم' : 'تعلّم كلمات إنجليزية جديدة وراجع السابقة'))),
+        el('button', { class: wd ? 'btn ghost' : 'btn gold', onclick: async () => { try { const r = await api(`v2/kids/${p.kidId}/habit-token?habit=word`); location.href = r.url; } catch (e) { toast(errMsg(e)); } } }, wd ? 'راجع مرة أخرى' : 'ابدأ كلمة اليوم')));
+    }
     if (s.reviews.length) cards.push(el('div', { class: 'card' }, el('h2', {}, 'مراجعة اليوم'), s.reviews.map(u => el('button', { class: 'btn ghost', onclick: () => { location.href = lessonUrl(p.kidId, 'review', u.key); } }, `راجع: ${u.name} ${u.i}`))));
     return el('div', {}, cards);
   });

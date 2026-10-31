@@ -186,6 +186,7 @@ test('عقد وحدة الكلمة: رمز موقّع قصير العمر، وح
   assert.equal((await post({ kidId: k.id, habit: 'xxx', date: today })).status, 400);
   const st = (await E.call(dad, 'GET', `/api/v2/kids/${k.id}/state`)).j;
   assert.equal(st.points.pointsToday, 50, 'كلمة اليوم = نصف نقاط اليوم مع آية اليوم'); assert.equal(st.recent[6].pts, 50);
+  assert.deepEqual(st.habitsDone, { ayah: false, word: true }, 'حالة كل عادة اليوم');
 });
 
 test('عدد التكرارات لكل ولد: افتراضي 10 ويُحصر بين 3 و10', async () => {
