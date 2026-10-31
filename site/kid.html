@@ -392,14 +392,19 @@ function lesson(u, kind, extra) {
         for (let k = 0; k < 3; k++) heardAlts.push(Array.from(ev.results).map(r => (r[k] || r[0]).transcript).join(' '));
         msg.textContent = '… ' + heardAlts[0];
       };
-      rec.onerror = ev => { msg.textContent = ev.error === 'not-allowed' ? 'اسمح للمتصفح باستخدام الميكروفون ثم أعد المحاولة.' : 'لم أسمعك جيداً، أعد المحاولة.'; };
+      rec.onerror = ev => {
+        L.srErr = ev.error || 'unknown';
+        const why = { 'not-allowed': 'اسمح للمتصفح باستخدام الميكروفون ثم أعد المحاولة.', 'service-not-allowed': 'خدمة التعرّف على الكلام غير مفعّلة في جهازك (فعّل الإملاء الصوتي في إعدادات الجوال).', 'no-speech': 'لم أسمع صوتاً. قرّب الجوال وأعد المحاولة.', 'audio-capture': 'لا أجد ميكروفوناً في هذا الجهاز.', 'network': 'يلزم اتصال بالإنترنت للتعرّف على الصوت.', 'language-not-supported': 'جهازك لا يدعم التعرّف على العربية.' };
+        msg.textContent = why[ev.error] || 'لم أسمعك جيداً، أعد المحاولة.';
+        L.fails++; if (L.fails >= 2) { actions.replaceChildren(parentBtn()); }
+      };
       rec.onend = () => { rec = null; mic.classList.remove('live'); evaluate(); };
       mic.classList.add('live'); msg.textContent = '';
       try { rec.start(); } catch (e) { rec = null; mic.classList.remove('live'); }
     }
 
     async function evaluate() {
-      if (!heardAlts.some(Boolean)) { msg.textContent = 'لم أسمع شيئاً. أعد.'; return; }
+      if (!heardAlts.some(Boolean)) { if (!L.srErr) { L.fails++; msg.textContent = 'لم أسمع شيئاً. أعد.'; if (L.fails >= 2) actions.replaceChildren(parentBtn()); } return; }
       const best = heardAlts.map(h => compare(u.c, h)).sort((a, b) => b.score - a.score)[0];
       const pct = Math.round(best.score * 100);
       let hits = best.hit;
@@ -421,13 +426,13 @@ function lesson(u, kind, extra) {
       }
     }
     function parentBtn() {
-      return el('button', { class: 'btn ghost', onclick: () => finish(kind === 'new' ? 'pending' : 'self', 0) },
+      return el('button', { class: 'btn ghost', onclick: () => { if (kind === 'new' && !confirm('هل أبوك بجانبك الآن ليسمع تسميعك؟ لن تُحسب الآية إلا بعد أن يؤكد أنه سمعها.')) return; finish(kind === 'new' ? 'pending' : 'self', 0); } },
         kind === 'new' ? 'سمّعتها لأبي (ينتظر تأكيده)' : kind === 'practice' ? 'أنهيت التدريب' : 'راجعتها بدون ميكروفون');
     }
     async function finish(method, score) {
       mic.disabled = true;
       if (kind === 'practice') { done('practice'); return; }   // تدريب: لا يُسجَّل شيء
-      try { S = await api(resultApi(), 'POST', { key: u.key, kind, method, score, extra: !!extra, secs: Math.min(1800, Math.round((Date.now() - T0) / 1000)) }); }
+      try { S = await api(resultApi(), 'POST', { key: u.key, kind, method, score, extra: !!extra, secs: Math.min(1800, Math.round((Date.now() - T0) / 1000)), diag: { sr: !!SR, err: L.srErr || '', fails: L.fails, native: !!window.NATIVE, ua: navigator.userAgent.slice(0, 80) } }); }
       catch (e) { msg.textContent = 'تعذّر الحفظ: ' + e.message; mic.disabled = false; return; }
       done(method);
     }
@@ -441,7 +446,7 @@ function lesson(u, kind, extra) {
     }
 
     const dockNodes = [msg];
-    if (SR) dockNodes.push(mic); else dockNodes.push(el('div', { class: 'note' }, 'هذا المتصفح لا يدعم التسميع بالصوت. استخدم Chrome على أندرويد، أو سمّع لأبيك.'), parentBtn());
+    if (SR) dockNodes.push(mic); else dockNodes.push(el('div', { class: 'note' }, 'هذا الجهاز أو المتصفح لا يدعم سماع التسميع. افتح ثبات من Chrome على أندرويد أو من تطبيق ثبات، أو سمّع لأبيك.'), parentBtn());
     dockNodes.push(actions);
     setDock(topCard(''), ...dockNodes);
     PEND.zoom.classList.add('slim');

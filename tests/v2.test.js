@@ -76,14 +76,16 @@ test('تأكيد الأب للتسميع: لا نقاط قبل التأكيد، 
   const b = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ج', age: 12, start: 114 })).j;
   const dev = (await E.signIn('dev4')).session; await E.call(dev, 'POST', '/api/v2/invites/' + a.invite.url.split('/i/')[1] + '/claim');
   const st = (await E.call(dev, 'GET', '/api/v2/kids/' + a.id + '/state')).j;
-  const r = await E.call(dev, 'POST', '/api/v2/kids/' + a.id + '/result', { kind: 'new', key: st.next.key, method: 'pending', score: 0, secs: 50 });
+  const r = await E.call(dev, 'POST', '/api/v2/kids/' + a.id + '/result', { kind: 'new', key: st.next.key, method: 'pending', score: 0, secs: 50, diag: { sr: false, err: '', fails: 0 } });
   assert.equal(r.j.points.pointsToday, 0, 'غير مؤكد بلا نقاط');
+  assert.equal(r.j.pending[0].why, 'unsupported', 'سبب عدم سماع التطبيق يصل للأب');
+  assert.equal(r.j.recent.length, 7); assert.equal(r.j.recent[6].pts, 0);
   const sid = r.j.pending[0].sid;
   const mv = await E.call(dad, 'POST', '/api/v2/kids/' + a.id + '/sessions/' + sid + '/move', { toKid: b.id }); assert.equal(mv.r.status, 200);
   assert.equal((await E.call(dad, 'GET', '/api/v2/kids/' + a.id + '/state')).j.pending.length, 0);
   const bs = (await E.call(dad, 'GET', '/api/v2/kids/' + b.id + '/state')).j; assert.equal(bs.pending.length, 1);
   const cf = await E.call(dad, 'POST', '/api/v2/kids/' + b.id + '/confirm', { sid: bs.pending[0].sid, ok: true }); assert.equal(cf.r.status, 200);
-  assert.equal(cf.j.points.pointsToday, 100);
+  assert.equal(cf.j.points.pointsToday, 100); assert.equal(cf.j.recent[6].pts, 100, 'اليوم الكامل 100 نقطة بعد التأكيد'); assert.equal(Math.round(cf.j.points.points), 100);
 });
 
 test('النقاط والمكافأة عبر الواجهة: تحديد الخطة وقيمة اليوم الكامل', async () => {

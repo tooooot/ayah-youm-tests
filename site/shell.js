@@ -168,12 +168,15 @@ function kidCard(k, i, onclick) {
   const pts = k.points || {};
   return el('div', { class: 'card tap', onclick },
     el('div', { class: 'row' }, avatar(k.name, i), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, k.name), el('div', { class: 'mute' }, `${k.age} سنة`)), statusChip(k)),
-    el('div', { class: 'stats' }, [[k.streak, 'أيام متواصلة'], [k.memorized, 'آية محفوظة'], [k.reviewsDue, 'مراجعات'], pts.mode !== 'none' && pts.maxPoints ? [Math.round(pts.points), 'نقطة'] : [k.weekNew + '/7', 'هذا الأسبوع']].map(([v, l]) => el('div', { class: 'stat' }, el('b', {}, v), el('span', {}, l)))));
+    el('div', { class: 'stats' }, [[k.streak, 'أيام متواصلة'], [k.memorized, 'آية محفوظة'], [k.reviewsDue, 'مراجعات'], [Math.round(pts.points), 'نقطة الدورة']].map(([v, l]) => el('div', { class: 'stat' }, el('b', {}, v), el('span', {}, l)))));
 }
+const WHY = { unsupported: 'جهازه لا يدعم سماع التسميع', 'not-allowed': 'الميكروفون ممنوع على جهازه', 'service-not-allowed': 'خدمة التعرّف على الكلام مغلقة في جهازه', 'no-speech': 'لم يلتقط التطبيق صوتاً', 'audio-capture': 'لا ميكروفون في جهازه', network: 'انقطع الاتصال أثناء التسميع' };
 function pendingBox(k) {
   if (!k.pending.length) return null;
-  return el('div', { class: 'card' }, el('h2', {}, `بانتظار تأكيدك — ${k.name}`), ...k.pending.map(p => el('div', { class: 'row sb', style: 'padding:6px 0' }, el('span', {}, `${p.label} · ${p.date}`),
-    el('span', {}, el('button', { class: 'btn sm', onclick: () => confirmSession(k, p, true) }, 'صحيح'), ' ', el('button', { class: 'btn sm ghost', onclick: () => confirmSession(k, p, false) }, 'يعيد')))));
+  return el('div', { class: 'card' }, el('h2', {}, `تسميع ينتظر تأكيدك — ${k.name}`),
+    el('p', { class: 'note' }, 'لم يستطع التطبيق التحقق من تسميعه بالصوت. أكّد فقط إن سمعتَه بنفسك؛ لا تُحسب الآية ولا النقاط قبل تأكيدك.'),
+    ...k.pending.map(p => el('div', { style: 'padding:8px 0;border-bottom:1px solid var(--line)' }, el('div', { class: 'row sb' }, el('b', {}, p.label), el('span', { class: 'mute' }, p.date)), el('div', { class: 'mute', style: 'margin:2px 0 6px' }, WHY[p.why] || 'لم يُسمَّع بالصوت'),
+      el('div', { class: 'row' }, el('button', { class: 'btn sm', onclick: () => confirmSession(k, p, true) }, 'سمعتُه وصحّ'), el('button', { class: 'btn sm ghost', onclick: () => confirmSession(k, p, false) }, 'لم أسمعه / يعيد')))));
 }
 async function confirmSession(k, p, ok) { try { await api(`v2/kids/${k.id}/confirm`, 'POST', { sid: p.sid, ok }); toast(ok ? 'تم التأكيد' : 'طُلبت الإعادة'); route(); } catch (e) { toast(errMsg(e)); } }
 const todayAr = () => { try { return new Intl.DateTimeFormat('ar-SA-u-ca-gregory', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()); } catch (_) { return ''; } };
@@ -204,8 +207,8 @@ function progressTab() {
       el('div', { class: 'dots' }, k.last14.map(on => el('i', { class: 'dot' + (on ? ' on' : '') }))),
       el('div', { class: 'stats' }, [[k.streak, 'متواصلة'], [k.memorized, 'محفوظ'], [k.weekNew + '/7', 'الأسبوع']].map(([v, l]) => el('div', { class: 'stat' }, el('b', {}, v), el('span', {}, l)))),
       k.avgNewSecs ? el('p', { class: 'mute' }, `متوسط درس الآية الجديدة: ${(k.avgNewSecs / 60).toFixed(1)} دقيقة (آخر 7 دروس)`) : '',
-      p.mode !== 'none' && p.maxPoints ? el('div', {}, el('div', { class: 'row sb' }, el('span', { class: 'mute' }, 'نقاط الدورة'), el('b', {}, `${Math.round(p.points)} / ${p.maxPoints}`)), el('div', { class: 'bar' }, el('i', { style: `width:${Math.min(100, Math.round(100 * p.points / p.maxPoints))}%` })),
-        el('div', { class: 'mute' }, `يستحق حتى الآن: ${p.earned} من ${p.amount} ريال`)) : el('p', { class: 'mute' }, 'لم تُحدَّد مكافأة بعد (من صفحة الولد).'));
+      el('div', { style: 'margin-top:10px' }, el('div', { class: 'row sb' }, el('span', { class: 'mute' }, 'نقاط الدورة'), el('b', {}, `${Math.round(p.points)} / ${p.maxPoints}`)), el('div', { class: 'bar' }, el('i', { style: `width:${Math.min(100, Math.round(100 * p.points / p.maxPoints))}%` })),
+        weekBars(k.recent || []), p.mode !== 'none' ? el('div', { class: 'mute' }, `يستحق حتى الآن: ${p.earned} من ${p.amount} ريال`) : el('p', { class: 'mute' }, 'لم تُحدَّد مكافأة بعد (من صفحة الولد).')));
   })) : empty('chart', 'لا يوجد تقدّم بعد', 'أضف ولداً ليبدأ التقدّم بالظهور.'));
 }
 function profileTab() {
@@ -278,9 +281,9 @@ function studentShell(tab, title, build) {
 const lessonUrl = (id, kind, key, extra) => `/lesson/${id}?kind=${kind}${key ? '&key=' + key : ''}${extra ? '&extra=1' : ''}`;
 function todayTab() {
   studentShell('today', 'اليوم', (s, p) => {
-    const pts = s.points || {}, hasPts = pts.mode !== 'none' && pts.maxPoints, cards = [];
-    cards.push(el('div', { class: 'hero' }, el('div', { class: 'ringwrap' }, ring(hasPts ? Math.round(pts.pointsToday) : (s.newToday ? 1 : 0), hasPts ? 100 : 1, s.streak),
-      el('div', {}, el('div', { class: 'mute' }, `السلام عليكم يا ${s.name}`), el('h1', { style: 'margin:2px 0' }, s.streak === 1 ? 'يوم متواصل' : 'أيام متواصلة'), el('div', { class: 'mute' }, hasPts ? `نقاط اليوم ${Math.round(pts.pointsToday)} من 100` : todayAr())))));
+    const pts = s.points || {}, cards = [];
+    cards.push(el('div', { class: 'hero' }, el('div', { class: 'ringwrap' }, ring(Math.round(pts.pointsToday), 100, Math.round(pts.pointsToday)),
+      el('div', {}, el('div', { class: 'mute' }, `السلام عليكم يا ${s.name}`), el('h1', { style: 'margin:2px 0' }, `نقاط اليوم: ${Math.round(pts.pointsToday)} من 100`), el('div', { class: 'mute' }, `${s.streak} ${s.streak === 1 ? 'يوم متواصل' : 'أيام متواصلة'}`)))));
     if (!s.finished) {
       if (s.newToday) cards.push(el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av0' }, ic('check')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'أحسنت! أتممت آية اليوم'), el('div', { class: 'mute' }, s.pending.length ? 'بانتظار تأكيد أبيك' : 'ثبّتها بالتدريب إن أردت'))),
         s.todayUnit ? el('button', { class: 'btn ghost', onclick: () => { location.href = lessonUrl(p.kidId, 'practice'); } }, `درّب ${s.todayUnit.name} ${s.todayUnit.i}`) : '',
@@ -291,12 +294,15 @@ function todayTab() {
     return el('div', {}, cards);
   });
 }
+const weekBars = recent => el('div', { class: 'week' }, recent.map(d => { let l = ''; try { l = new Date(d.date + 'T00:00:00Z').toLocaleDateString('ar', { weekday: 'short', timeZone: 'UTC' }); } catch (_) {}
+  return el('div', { class: 'b' }, el('span', { class: 'v' }, Math.round(d.pts)), el('i', { style: `height:${Math.max(4, Math.round(d.pts * 0.62))}px;${d.pts ? '' : 'background:var(--line)'}` }), el('span', { class: 'd' }, l)); }));
 function achvTab() {
   studentShell('achv', 'إنجازي', s => {
     const pts = s.points || {};
     return el('div', {}, el('div', { class: 'card' }, el('div', { class: 'stats' }, [[s.memorized, 'آية محفوظة'], [s.streak, 'أيام متواصلة'], [s.weekNew + '/7', 'هذا الأسبوع']].map(([v, l]) => el('div', { class: 'stat' }, el('b', {}, v), el('span', {}, l)))), el('div', { class: 'dots' }, s.last14.map(on => el('i', { class: 'dot' + (on ? ' on' : '') })))),
-      pts.mode !== 'none' && pts.maxPoints ? el('div', { class: 'card' }, el('h2', {}, 'نقاط هذا الشهر'), el('div', { class: 'pts' }, el('b', {}, Math.round(pts.points)), el('span', { class: 'mute' }, `من ${pts.maxPoints}`)), el('div', { class: 'bar' }, el('i', { style: `width:${Math.min(100, Math.round(100 * pts.points / pts.maxPoints))}%` })),
-        pts.showMoney ? el('p', { class: 'mute' }, `مكافأتك حتى الآن: ${pts.earned} من ${pts.amount} ريال`) : el('p', { class: 'mute' }, 'استمر كل يوم لتصل إلى أعلى نقاطك.')) : el('div', { class: 'card' }, el('p', { class: 'mute' }, 'كل يوم تنجز فيه عاداتك تقرّبك من هدفك.')));
+      el('div', { class: 'card' }, el('h2', {}, 'نقاط آخر 7 أيام'), el('p', { class: 'mute' }, 'اليوم الكامل = 100 نقطة'), weekBars(s.recent || [])),
+      el('div', { class: 'card' }, el('h2', {}, 'نقاط هذه الدورة'), el('div', { class: 'pts' }, el('b', {}, Math.round(pts.points)), el('span', { class: 'mute' }, `من ${pts.maxPoints}`)), el('div', { class: 'bar' }, el('i', { style: `width:${Math.min(100, Math.round(100 * pts.points / pts.maxPoints))}%` })),
+        pts.mode !== 'none' && pts.showMoney ? el('p', { class: 'mute' }, `مكافأتك حتى الآن: ${pts.earned} من ${pts.amount} ريال`) : el('p', { class: 'mute' }, 'استمر كل يوم لتصل إلى أعلى نقاطك.')));
   });
 }
 function meTab() {

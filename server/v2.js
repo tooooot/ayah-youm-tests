@@ -57,7 +57,9 @@ function mount(ctx) {
   async function kidView(k, withInvite) {
     const habits = (k.habits && k.habits.length ? k.habits : ['ayah']);
     if (P.snapToday(k, today(), P.cleanPlan(k.plan || {}))) await save();
-    const v = { ...kidState(k), habits, plan: P.cleanPlan(k.plan || {}), points: P.summary(k, today(), habits, habitDone(k)) };
+    const plan = P.cleanPlan(k.plan || {}), done = habitDone(k), recent = [];
+    for (let i = 6; i >= 0; i--) { const d = P.addDays(today(), -i); recent.push({ date: d, pts: P.dayScore(d, habits, plan, done) }); }   // آخر 7 أيام بغضّ النظر عن حدود الدورة
+    const v = { ...kidState(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
     if (withInvite) { v.invite = { status: inviteStatus(k), url: k.invite ? `${ORIGIN}/i/${k.invite.token}` : null }; }
     return v;
   }

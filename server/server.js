@@ -104,7 +104,7 @@ function kidState(kid) {
   const last14 = [];
   for (let i = 13; i >= 0; i--) last14.push(newDays.has(addDays(t, -i)));
   const weekNew = [...Array(7).keys()].filter(i => newDays.has(addDays(t, -i))).length;
-  const pending = kid.log.filter(s => s.status === 'pending').map(s => ({ sid: s.id, date: s.date, label: label(s.key) }));
+  const pending = kid.log.filter(s => s.status === 'pending').map(s => { let d = {}; try { d = JSON.parse(s.diag || '{}'); } catch (_) {} return { sid: s.id, date: s.date, label: label(s.key), why: d.sr === false ? 'unsupported' : (d.err || 'declined') }; });
   return {
     id: kid.id, name: kid.name, age: kid.age, start: kid.start, startName: SURAH[kid.start].name,
     reward: kid.reward, rewardDays: kid.rewardDays, time: kid.time,
@@ -182,6 +182,7 @@ async function submitResult(k, body) {
       const st = kidState(k), t = today();
       const score = Math.max(0, Math.min(1, +body.score || 0));
       const secs = Math.max(0, Math.min(3600, Math.round(+body.secs || 0)));   // مدة الدرس الفعلية (ثوانٍ)
+      const diag = body.diag && typeof body.diag === 'object' ? JSON.stringify(body.diag).slice(0, 300) : '';   // لماذا لم يسمع التطبيق (تشخيص)
       if (body.kind === 'new') {
         // آية جديدة ثانية في اليوم مسموحة بطلب صريح (extra) وبحد 4 آيات جديدة يومياً
         const newCount = k.log.filter(x => x.kind === 'new' && x.date === t && x.status !== 'rejected').length;
@@ -190,7 +191,7 @@ async function submitResult(k, body) {
         if (body.method === 'voice') { if (score < st.threshold) return { err: [400, 'low'] }; status = 'ok'; }
         else if (body.method === 'pending') status = 'pending';
         else return { err: [400, 'طريقة غير صحيحة'] };
-        k.log.push({ id: rid(6), date: t, key: body.key, kind: 'new', score, method: body.method, status, secs });
+        k.log.push({ id: rid(6), date: t, key: body.key, kind: 'new', score, method: body.method, status, secs, ...(diag ? { diag } : {}) });
       } else if (body.kind === 'review') {
         if (!st.reviews.some(u => u.key === body.key)) return { err: [409, 'ليست مراجعة اليوم'] };
         const fail = body.method === 'voice' && score < st.threshold;
