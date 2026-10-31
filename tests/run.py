@@ -31,6 +31,13 @@ for k, p in plan.items():
     for c in p.get('ch', []):
         if not (0 <= c[0] < c[1] <= n and 0 <= c[2] < c[3] <= p['df'] + .1): badp.append(k)
 check('توقيت الكلمات سليم (الصوت السريع)', not badp, badp[:10])
+MAN = json.load(open(os.path.join(ROOT, 'tools', 'manual_cuts.json'))) if os.path.exists(os.path.join(ROOT, 'tools', 'manual_cuts.json')) else {}
+badcut = []
+for k, pl in plan.items():
+    for c in pl.get('ch', []):
+        ln = c[1] - c[0]
+        if ln < 3 or ln > 12 or (c[1] < len(W[k]) and not (any(m in W[k][c[1] - 1] for m in 'ۖۗۚۘ') or c[1] in MAN.get(k, []))): badcut.append((k, c[:2]))
+check('تقسيم الآيات الطويلة عند علامات الوقف (صلى/قلى/ج/م) أو قطع يدوي، وكل قطعة 3–12 كلمة', not badcut, badcut[:6])
 check('الآيات الطويلة مقسّمة', sum(1 for p in plan.values() if 'ch' in p) >= 10, sum(1 for p in plan.values() if 'ch' in p))
 
 # ───── تشغيل الخادم ─────
