@@ -125,6 +125,12 @@ try:
         pg.wait_for_function("[...document.querySelectorAll('button')].some(x=>x.textContent.includes('جاهز للتسميع') && !x.disabled)", timeout=90000); pg.get_by_text('جاهز للتسميع').click(); pg.wait_for_selector('.dock .mic', timeout=10000)
         pg.locator('.dock .mic').click(force=True); pg.wait_for_function("document.querySelector('.dock .say').textContent.includes('…')", timeout=10000)
         shown = pg.inner_text('.dock .say').strip(); check('النص الظاهر بلا تكرار (النتائج التراكمية تُدمج)', shown == '… بسم الله الرحمن', shown); ctx6.close()
+        # ٤هـ. عدد التكرارات يضبطه الأب: 3 ⇒ ست خطوات (3 استماعات + 3 ترديدات)
+        k7 = post('/api/v2/kids', {'name': 'رنا', 'age': 9, 'start': 114}, gs); rp = acct('kid-reps'); post('/api/v2/invites/' + k7['invite']['url'].split('/i/')[1] + '/claim', {}, rp)
+        req = urllib.request.Request(B + '/api/v2/kids/' + k7['id'], data=json.dumps({'repeats': 3}).encode(), headers={'Content-Type': 'application/json', 'X-Session': gs}, method='PUT'); urllib.request.urlopen(req)
+        pgr = page(rp); pgr.goto(B + f'/lesson/{k7["id"]}?kind=new'); pgr.wait_for_selector('text=ابدأ الدرس', timeout=15000); pgr.get_by_text('ابدأ الدرس').click(); pgr.wait_for_selector('.dots2 i', timeout=20000)
+        check('تكرار 3: ست نقاط في الحلقة (3 استماعات + 3 ترديدات)', pgr.locator('.dots2 i').count() == 6, pgr.locator('.dots2 i').count()); pgr.close()
+        pgp = page(gs); pgp.goto(B + f'/app#/kid/{k7["id"]}'); pgp.wait_for_selector('text=تكرار الحلقة', timeout=15000); check('صفحة الولد: ضبط عدد التكرارات', pgp.get_by_role('button', name='10 (الأكمل)').count() == 1); pgp.close()
         # ٥. جهاز مشترك: ولدان على حساب واحد
         k2 = post('/api/v2/kids', {'name': 'نوف', 'age': 8}, gs); k3 = post('/api/v2/kids', {'name': 'ريم', 'age': 6}, gs); dev = acct('shared-ui')
         for k_ in (k2, k3): post('/api/v2/invites/' + k_['invite']['url'].split('/i/')[1] + '/claim', {}, dev)

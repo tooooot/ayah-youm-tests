@@ -18,9 +18,9 @@
 </head>
 <body>
 <div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
-<script src="/common.js?v=20261101h"></script>
+<script src="/common.js?v=20261101i"></script>
 <script src="/native.js?v=20261101b"></script>
-<script src="/rec.js?v=20261101h"></script>
+<script src="/rec.js?v=20261101i"></script>
 <script src="/mushaf.js?v=20261031c"></script>
 <script>
 try { screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait').catch(() => {}); } catch (_) {}
@@ -163,14 +163,15 @@ function lesson(u, kind, extra) {
   function makePlan() {
     const info = PLAN[u.key] || {};
     const lvOf = (r, n) => r < Math.ceil(n * .25) ? 0 : r < Math.ceil(n * .5) ? 1 : r < Math.ceil(n * .75) ? 2 : 3;
-    const N = 10;   // لكل مقطع صوتي: عشر استماعات متتالية تلقائياً ثم عشر ترديدات (القارئ يقرأ ثم الطفل)
+    const N = Math.max(3, Math.min(10, +S.repeats || 10));   // لكل مقطع صوتي: N استماعات متتالية تلقائياً ثم N ترديدات (القارئ يقرأ ثم الطفل)؛ الافتراضي 10، ويضبطه الأب
     const rounds = (w, fs, fe, tag, g, slowFirst) => [
       ...Array.from({ length: N }, (_, i) => ({ slow: slowFirst && i === 0, listen: true, w, fs, fe, g, lv: 0, tag, n: i + 1, of: N })),
       ...Array.from({ length: N }, (_, i) => ({ slow: false, w, fs, fe, g, lv: lvOf(i, N), tag, n: i + 1, of: N }))];
     if (info.ch) {   // الآية الطويلة: التكرار على كل مقطع (حدوده علامات الوقف) لا على الآية كاملة، ثم ربط بالآية كاملة ثلاث مرات
       const out = []; info.ch.forEach(([w0, w1, fs, fe], c) => out.push(...rounds([w0, w1], fs, fe, `الجزء ${c + 1}/${info.ch.length}`, c, false)));
       const g = info.ch.length;
-      out.push(...Array.from({ length: 3 }, (_, i) => ({ slow: false, listen: true, w: null, g, lv: 0, tag: 'كاملة', n: i + 1, of: 3 })), ...Array.from({ length: 3 }, (_, i) => ({ slow: false, w: null, g, lv: Math.min(3, i + 1), tag: 'كاملة', n: i + 1, of: 3 })));
+      const J = Math.min(3, N);
+      out.push(...Array.from({ length: J }, (_, i) => ({ slow: false, listen: true, w: null, g, lv: 0, tag: 'كاملة', n: i + 1, of: J })), ...Array.from({ length: J }, (_, i) => ({ slow: false, w: null, g, lv: Math.min(3, i + 1), tag: 'كاملة', n: i + 1, of: J })));
       return out;
     }
     return rounds(null, undefined, undefined, '', 0, true);

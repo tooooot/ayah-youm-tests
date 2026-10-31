@@ -187,3 +187,12 @@ test('عقد وحدة الكلمة: رمز موقّع قصير العمر، وح
   const st = (await E.call(dad, 'GET', `/api/v2/kids/${k.id}/state`)).j;
   assert.equal(st.points.pointsToday, 50, 'كلمة اليوم = نصف نقاط اليوم مع آية اليوم'); assert.equal(st.recent[6].pts, 50);
 });
+
+test('عدد التكرارات لكل ولد: افتراضي 10 ويُحصر بين 3 و10', async () => {
+  const dad = await G('dad12'); await E.call(dad, 'POST', '/api/v2/family', { name: 'تكرار' });
+  const k = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ت', age: 8 })).j; assert.equal(k.repeats, 10);
+  assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + k.id, { repeats: 5 })).j.repeats, 5);
+  assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + k.id, { repeats: 1 })).j.repeats, 3, 'أدنى 3');
+  assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + k.id, { repeats: 99 })).j.repeats, 10, 'أقصى 10');
+  assert.equal((await E.call(dad, 'GET', '/api/v2/kids/' + k.id + '/state')).j.repeats, 10);
+});
