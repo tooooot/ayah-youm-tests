@@ -79,7 +79,7 @@ function centerAyah(c) {
   function tick(t) {
     raf = 0; if (!cur || !tgt) return;
     pe.style.willChange = 'transform';   // أثناء الحركة طبقة مركّبة بالمعالج الرسومي؛ وعند السكون يُعاد رسم الخط حاداً
-    const k = 1 - Math.exp(-Math.max(0, Math.min(.1, (t - last) / 1000)) * 6.5); last = t;
+    const dist = Math.abs(tgt.tx - cur.tx) + Math.abs(tgt.ty - cur.ty), k = 1 - Math.exp(-Math.max(0, Math.min(.1, (t - last) / 1000)) * (6.5 + Math.min(14, dist / 60))); last = t;   // القفزة البعيدة (سطر جديد/مقطع جديد) أسرع
     for (const key of ['tx', 'ty', 's']) cur[key] += (tgt[key] - cur[key]) * k;
     apply();
     if (Math.abs(tgt.tx - cur.tx) + Math.abs(tgt.ty - cur.ty) + Math.abs(tgt.s - cur.s) * 100 > .3) raf = requestAnimationFrame(tick); else { Object.assign(cur, tgt); apply(); pe.style.willChange = 'auto'; }
@@ -90,7 +90,6 @@ function centerAyah(c) {
     focus(i) { if (!g || i < 0 || i >= g.r.length || (mode === 'focus' && fi === i)) return; mode = 'focus'; fi = i; retarget(); go(); },
     overview() { mode = 'over'; fi = -1; retarget(); go(); },
     get zoomed() { return mode === 'focus'; },
-    dbg: () => ({ cur, tgt, fi, mode, raf, g: g && { W: g.W, H: g.H, pl: g.pl, pt: g.pt, pw: g.pw, ph: g.ph, s: g.s, r: g.r[fi] } }),
   };
   CENTER = snap; snap();
   c.cam = api; return api;

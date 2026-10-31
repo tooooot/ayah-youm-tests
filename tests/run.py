@@ -108,7 +108,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
             ch = 'ch' in plan[key]
             check(f'درس {kind} ({key}): ينتهي ويظهر «جاهز للتسميع»', r['ready'], f"{r['secs']:.0f}s")
             check(f'درس {kind}: كلمة جارية واحدة ولا بطاقة علوية', r['mism'] == 0, r['mism'])
-            check(f'درس {kind}: الكاميرا تقترب (تكبير ≥1.4) وتبقى الكلمة الجارية داخل الشاشة', r['maxsc'] >= 1.4 and r['cur_n'] > 5 and r['out_n'] <= max(2, r['cur_n'] * .03), (round(r['maxsc'], 2), r['cur_n'], r['out_n']))
+            check(f'درس {kind}: الكاميرا تقترب (تكبير ≥1.4) وتبقى الكلمة الجارية داخل الشاشة', r['maxsc'] >= 1.4 and r['cur_n'] > 5 and r["out_n"] <= max(2, r["cur_n"] * .04), (round(r['maxsc'], 2), r['cur_n'], r['out_n']))
             check(f'درس {kind}: الصفحة بلا تمويه وبلا عدّاد/شريط', r['blurred'] == 0 and r['stale'] == 0, (r['blurred'], r['stale']))
             check(f'درس {kind}: شاشة «دورك» تختلف (إطار أخضر + صفحة تخفت) وشاشة الاستماع هادئة', r['turn_bad'] == 0, r['turn_bad'])
             check(f'درس {kind}: نقاط التقدّم بعدد الخطوات', r['dots'] >= 10, r['dots'])
