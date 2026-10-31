@@ -111,6 +111,14 @@ function startV2() {
   const q = new URLSearchParams(location.search), kind = q.get('kind') || 'new', key = q.get('key');
   const u = kind === 'review' ? (S.reviews || []).find(x => x.key === key) : kind === 'practice' ? S.todayUnit : S.next;
   if (!u) return void (location.href = '/app');
+  // قبل أن يقضي الولد دقائق في الاستماع: إن كان المتصفح لا يدعم سماع التسميع نُنبّهه الآن
+  if (kind === 'new' && !SR && !window.NATIVE && !window.__skipSr) {
+    show(el('div', { class: 'card' }, el('h2', {}, 'هذا المتصفح لا يسمع التسميع'),
+      el('p', { class: 'mute' }, 'لن يستطيع ثبات سماع صوتك هنا (مثل Firefox وبعض متصفحات آيفون). افتح ثبات من Chrome على أندرويد أو الكمبيوتر، أو من تطبيق ثبات. إن أكملتَ هنا فستحتاج أن يسمعك أبوك وهو بجانبك ويؤكد.'),
+      el('button', { class: 'btn', onclick: () => lesson(u, kind, q.get('extra') === '1') }, 'أكمل رغم ذلك'),
+      el('button', { class: 'btn ghost', onclick: home }, 'رجوع')));
+    return;
+  }
   lesson(u, kind, q.get('extra') === '1');
 }
 

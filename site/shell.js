@@ -282,6 +282,8 @@ const lessonUrl = (id, kind, key, extra) => `/lesson/${id}?kind=${kind}${key ? '
 function todayTab() {
   studentShell('today', 'اليوم', (s, p) => {
     const pts = s.points || {}, cards = [];
+    const srOk = !!(window.SpeechRecognition || window.webkitSpeechRecognition) || window.NATIVE;
+    if (!srOk) cards.push(el('div', { class: 'note', style: 'margin-bottom:12px' }, 'هذا المتصفح لا يدعم سماع التسميع بالصوت. افتح ثبات من Chrome (أندرويد أو كمبيوتر) أو من تطبيق ثبات، وإلا سيحتاج تسميعك إلى أن يسمعك أبوك ويؤكد.'));
     cards.push(el('div', { class: 'hero' }, el('div', { class: 'ringwrap' }, ring(Math.round(pts.pointsToday), 100, Math.round(pts.pointsToday)),
       el('div', {}, el('div', { class: 'mute' }, `السلام عليكم يا ${s.name}`), el('h1', { style: 'margin:2px 0' }, `نقاط اليوم: ${Math.round(pts.pointsToday)} من 100`), el('div', { class: 'mute' }, `${s.streak} ${s.streak === 1 ? 'يوم متواصل' : 'أيام متواصلة'}`)))));
     if (!s.finished) {
