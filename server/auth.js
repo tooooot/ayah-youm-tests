@@ -143,6 +143,10 @@ function mount(ctx) {
       const f = ctx.V2.famOf(acc);
       return send(res, 200, { session, role: acc.role, ...(f ? { parent: f.parentToken } : {}) });
     }
+    if (p === '/api/auth/test' && req.method === 'POST' && process.env.TEST_AUTH === '1') {   // للاختبارات الآلية فقط: لا يُفعَّل في الإنتاج
+      const b = await ctx.readBody(req), acc = ctx.V2.ensureAccount('test:' + String(b.ident || 'x').slice(0, 40)); const session = ctx.V2.newSession(acc); await save();
+      return send(res, 200, { session, role: acc.role });
+    }
     if (p === '/api/auth/reviewer' && req.method === 'POST') {
       if (!REV) return send(res, 404, { error: 'غير متاح' });
       const ip = String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress).split(',')[0].trim(), now = Date.now();

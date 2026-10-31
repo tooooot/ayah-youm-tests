@@ -84,6 +84,7 @@ function mount(ctx) {
     const body = m === 'GET' || m === 'DELETE' && !(req.headers['content-length'] > 0) ? {} : await readBody(req);
     const bad = (c, e) => send(res, c, { error: e });
 
+    if (seg[0] === 'logout' && m === 'POST') { const h = sha(req.headers['x-session']); db.sessions = db.sessions.filter(s => s.h !== h); await save(); return send(res, 200, { ok: true }); }
     if (seg[0] === 'me' && m === 'GET') {
       const f = famOf(a);
       const profiles = a.profiles.map(pf => { for (const fm of db.families) { const k = fm.kids.find(x => x.id === pf.kidId); if (k) return { kidId: k.id, name: k.name, family: fm.name }; } return null; }).filter(Boolean);

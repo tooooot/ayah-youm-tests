@@ -284,7 +284,7 @@ const server = http.createServer(async (req, res) => {
     }
     // الروابط العميقة: iOS Universal Links وAndroid App Links (بصمة التوقيع من البيئة)
     if (p === '/.well-known/apple-app-site-association')
-      return send(res, 200, { applinks: { details: [{ appIDs: [`${TEAM}.${BUNDLE}`], components: [{ '/': '/k/*' }, { '/': '/p/*' }] }] } });
+      return send(res, 200, { applinks: { details: [{ appIDs: [`${TEAM}.${BUNDLE}`], components: [{ '/': '/i/*' }, { '/': '/k/*' }, { '/': '/p/*' }] }] } });
     if (p === '/.well-known/assetlinks.json') {
       const fp = (process.env.ANDROID_SHA256 || '').split(',').map(x => x.trim()).filter(Boolean);
       return send(res, 200, [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: BUNDLE, sha256_cert_fingerprints: fp } }]);
@@ -294,6 +294,8 @@ const server = http.createServer(async (req, res) => {
     if (await authHandler(req, res, url, p) !== false) return;
     if (p.startsWith('/api/')) return await api(req, res, url);
     let m;
+    if (/^\/i\/[\w-]+$/.test(p)) return serveFile(req, res, path.join(SITE, 'app.html'), 'no-store');   // دعوة ابن: التطبيق الجديد يعالجها
+    if (/^\/lesson\/[\w-]+$/.test(p)) return serveFile(req, res, path.join(SITE, 'kid.html'), 'no-store');   // شاشة الدرس بجلسة الحساب
     if ((m = /^\/(p|k)\/([\w-]+)$/.exec(p))) return serveFile(req, res, path.join(SITE, m[1] === 'p' ? 'parent.html' : 'kid.html'), 'no-store');
     if ((m = /^\/manifest\/(p|k)\/([\w-]+)\.json$/.exec(p))) {
       const kid = m[1] === 'k' ? kidByToken(m[2]) : null, fam = m[1] === 'p' ? famByParent(m[2]) : null;

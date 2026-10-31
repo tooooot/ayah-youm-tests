@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Noto+Naskh+Arabic:wght@400;700&display=swap">
 <link rel="stylesheet" href="/app.css?v=20261031c">
 <link rel="stylesheet" href="/frame.css?v=20261031c">
-<script>document.head.insertAdjacentHTML('beforeend','<link rel="manifest" href="/manifest/k/'+location.pathname.split('/')[2]+'.json">')</script>
+<script>if(!/^\/lesson\//.test(location.pathname))document.head.insertAdjacentHTML('beforeend','<link rel="manifest" href="/manifest/k/'+location.pathname.split('/')[2]+'.json">')</script>
 </head>
 <body>
 <div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
@@ -25,6 +25,9 @@
 <script>
 try { screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait').catch(() => {}); } catch (_) {}
 const TOKEN = location.pathname.split('/')[2];
+const V2 = location.pathname.startsWith('/lesson/');   // الوضع الجديد: TOKEN = رقم ملف الولد والجلسة من الحساب
+const stateApi = () => V2 ? 'v2/kids/' + TOKEN + '/state' : 'kid/' + TOKEN;
+const resultApi = () => V2 ? 'v2/kids/' + TOKEN + '/result' : 'kid/' + TOKEN + '/result';
 const app = $('#app');
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let S = null;            // حالة الولد من الخادم
@@ -100,11 +103,19 @@ function stopAudio() { if (audio) { audio.onended = null; audio.pause(); audio =
 const audioOf = key => new Audio('/audio/' + key + '.mp3');
 
 async function load() {
-  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json?v=20261031c').then(r => r.json()).catch(() => ({})); S = await api('kid/' + TOKEN); home(); }
-  catch (e) { show(el('div', { class: 'card' }, el('h2', {}, 'الرابط غير صحيح'), el('p', { class: 'mute' }, 'اطلب من أبيك الرابط الخاص بك.'))); }
+  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json?v=20261031c').then(r => r.json()).catch(() => ({})); S = await api(stateApi()); if (V2) return startV2(); home(); }
+  catch (e) { if (V2) return void (location.href = '/app'); show(el('div', { class: 'card' }, el('h2', {}, 'الرابط غير صحيح'), el('p', { class: 'mute' }, 'اطلب من أبيك الرابط الخاص بك.'))); }
+}
+// الوضع الجديد: التطبيق يفتح الدرس مباشرة بحسب kind وkey في الرابط
+function startV2() {
+  const q = new URLSearchParams(location.search), kind = q.get('kind') || 'new', key = q.get('key');
+  const u = kind === 'review' ? (S.reviews || []).find(x => x.key === key) : kind === 'practice' ? S.todayUnit : S.next;
+  if (!u) return void (location.href = '/app');
+  lesson(u, kind, q.get('extra') === '1');
 }
 
 function home() {
+  if (V2) { location.href = '/app'; return; }
   const nodes = [];
   const hero = el('div', { class: 'hero' },
     el('div', {}, 'السلام عليكم يا ' + S.name),
@@ -416,7 +427,7 @@ function lesson(u, kind, extra) {
     async function finish(method, score) {
       mic.disabled = true;
       if (kind === 'practice') { done('practice'); return; }   // تدريب: لا يُسجَّل شيء
-      try { S = await api('kid/' + TOKEN + '/result', 'POST', { key: u.key, kind, method, score, extra: !!extra, secs: Math.min(1800, Math.round((Date.now() - T0) / 1000)) }); }
+      try { S = await api(resultApi(), 'POST', { key: u.key, kind, method, score, extra: !!extra, secs: Math.min(1800, Math.round((Date.now() - T0) / 1000)) }); }
       catch (e) { msg.textContent = 'تعذّر الحفظ: ' + e.message; mic.disabled = false; return; }
       done(method);
     }

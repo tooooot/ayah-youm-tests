@@ -15,7 +15,7 @@
     const r = await api('auth/redeem', 'POST', { t });
     try { localStorage.setItem('ayah_parent', r.parent); localStorage.setItem('ayah_session', r.session || ''); } catch (_) {}
     if (window.closeNativeBrowser) closeNativeBrowser();
-    location.replace('/p/' + r.parent);
+    location.replace('/app');
   } catch (e) { $('#m').textContent = e.message || 'تعذّر الدخول'; }
 })();
 </script></body></html>

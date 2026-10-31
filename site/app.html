@@ -7,46 +7,14 @@
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#0f3d33">
 <link rel="icon" href="/icon-192.png">
-<link rel="stylesheet" href="/app.css">
-<style>body{background:linear-gradient(160deg,#0f3d33,#1d6b58);color:#fff;min-height:100vh}.wrap{padding-top:12vh;text-align:center}.logo{width:104px;height:104px;border-radius:24px;margin:0 auto 14px;display:block}
-.btn.apple{background:#000;color:#fff}.btn.google{background:#fff;color:#222}.wrap>.mute{color:#cfe3da}.card .mute{color:#5b6f66}</style>
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;700;800&display=swap">
+<link rel="stylesheet" href="/shell.css?v=20261101c">
 </head>
 <body>
-<div class="wrap" id="app"><img class="logo" src="/icon-192.png" alt=""><h1>ثبات</h1><p class="mute">جارٍ التحميل…</p></div>
+<div id="root"><div class="welcome"><img class="logo" src="/icon-192.png" alt=""><h1 style="font-size:2rem">ثبات</h1></div></div>
 <script src="/common.js?v=20261101b"></script>
 <script src="/native.js?v=20261101b"></script>
-<script>
-const app = $('#app');
-function reviewerBox() {   // دخول مراجعي المتاجر (حساب موحّد لكل تطبيقاتنا)
-  const u = el('input', { placeholder: 'اسم المستخدم', autocomplete: 'username', dir: 'ltr' }), p = el('input', { type: 'password', placeholder: 'كلمة المرور', autocomplete: 'current-password', dir: 'ltr' }), m = el('div', { class: 'mute' });
-  const f = el('div', { hidden: true }, u, p, el('button', { class: 'btn ghost', onclick: async () => {
-    try { const r = await api('auth/reviewer', 'POST', { user: u.value, pass: p.value }); localStorage.setItem('ayah_parent', r.parent); localStorage.setItem('ayah_session', r.session); location.replace('/p/' + r.parent); }
-    catch (e) { m.textContent = e.message; }
-  } }, 'دخول'), m);
-  return el('div', { style: 'text-align:center;margin-top:18px' }, el('a', { href: '#', style: 'color:#cfe3da;font-size:.9rem', onclick: ev => { ev.preventDefault(); f.hidden = !f.hidden; } }, 'دخول المراجعين (للمتاجر)'), f);
-}
-(async () => {
-  const q = new URLSearchParams(location.search);
-  try { if (q.get('reset')) { localStorage.removeItem('ayah_kid'); localStorage.removeItem('ayah_parent'); } } catch (_) {}
-  let kid = null, par = null;
-  try { kid = localStorage.getItem('ayah_kid'); par = localStorage.getItem('ayah_parent'); } catch (_) {}
-  if (par) return location.replace('/p/' + par);   // جهاز الأب أولاً (قد يفتح رابط ابنه للتجربة)
-  if (kid) return location.replace('/k/' + kid);
-  let cfg = { google: false, apple: false };
-  try { cfg = await api('auth/config'); } catch (_) {}
-  const go = prov => () => nativeBrowser('/auth/start/' + prov + (window.NATIVE ? '?app=1' : ''));
-  app.replaceChildren(el('img', { class: 'logo', src: '/icon-192.png', alt: '' }), el('h1', {}, 'ثبات'),
-    el('p', { class: 'mute' }, 'عادات يومية صغيرة تثبت: آية، وكلمة، وقراءة.'),
-    el('div', { class: 'card', style: 'color:#17352d;text-align:right' },
-      el('h2', {}, 'أنا الأب / الأم'),
-      cfg.google ? el('button', { class: 'btn google', onclick: go('google') }, 'الدخول بـ Google') : null,
-      cfg.apple ? el('button', { class: 'btn apple', onclick: go('apple') }, 'الدخول بـ Apple') : null,
-      !cfg.google && !cfg.apple ? el('p', { class: 'mute' }, 'الدخول بالحساب سيُفعَّل قريباً. يمكنك فتح رابط الأب الخاص بك مباشرة.') : null),
-    el('div', { class: 'card', style: 'color:#17352d;text-align:right' },
-      el('h2', {}, 'أنا الابن'),
-      el('p', { class: 'mute' }, 'افتح الرابط الذي أرسله لك أبوك، وسيفتح التطبيق على صفحتك مباشرة.')),
-    cfg.reviewer ? reviewerBox() : null);
-})();
-</script>
+<script src="/shell.js?v=20261101c"></script>
 </body>
 </html>
