@@ -19,8 +19,9 @@
 </head>
 <body>
 <div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
-<script src="/common.js?v=20261101b"></script>
+<script src="/common.js?v=20261101g"></script>
 <script src="/native.js?v=20261101b"></script>
+<script src="/rec.js?v=20261101g"></script>
 <script src="/mushaf.js?v=20261031c"></script>
 <script>
 try { screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait').catch(() => {}); } catch (_) {}
@@ -329,7 +330,7 @@ function lesson(u, kind, extra) {
       };
       const mk = () => {
         rec = new SR(); rec.lang = 'ar-SA'; rec.continuous = true; rec.interimResults = true;
-        rec.onresult = ev => { heard = Array.from(ev.results).map(x => x[0].transcript).join(' '); upd(); };
+        rec.onresult = ev => { heard = joinResults(ev.results); upd(); };
         rec.onend = () => { if (on) { prev = (prev + ' ' + heard).trim(); heard = ''; mk(); } };
         rec.onerror = () => {};
         try { rec.start(); } catch (_) {}
@@ -395,16 +396,22 @@ function lesson(u, kind, extra) {
     const msg = el('div', { class: 'say' }, '');
     const actions = el('div');
     let rec = null, heardAlts = [];
+    // تسجيل صوت الولد أثناء التسميع (V2 فقط): يُحفظ على جهازه 14 يوماً، وتُرسل نسخة مؤقتة للأب إن بقي التسميع معلّقاً
+    const canRec = V2 && kind !== 'practice' && S.recordVoice !== false && Rec.supported();
+    let recorder = null, lastBlob = null, recErr = '';
+    const startRec = async () => { if (!canRec) return; lastBlob = null; recorder = Rec.recorder(); try { await recorder.start(); recErr = ''; } catch (e) { recorder = null; recErr = e && e.name || 'err'; } };
+    const stopRec = async () => { if (!recorder) return; try { lastBlob = await recorder.stop(); } catch (_) {} recorder = null; };
 
     const mic = el('button', { class: 'mic', 'aria-label': 'ميكروفون', onclick: toggle }, '🎙');
-    function toggle() {
+    async function toggle() {
+      if (!SR) return toggleRecordOnly();
       if (rec) { rec.stop(); return; }
-      if (!SR) return;
       stopAudio(); heardAlts = []; hideAll(); actions.replaceChildren();
+      await startRec();
       rec = new SR(); rec.lang = 'ar-SA'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 3;
       rec.onresult = ev => {
         heardAlts = [];
-        for (let k = 0; k < 3; k++) heardAlts.push(Array.from(ev.results).map(r => (r[k] || r[0]).transcript).join(' '));
+        for (let k = 0; k < 3; k++) heardAlts.push(joinResults(ev.results, k));
         msg.textContent = '… ' + heardAlts[0];
       };
       rec.onerror = ev => {
@@ -413,11 +420,18 @@ function lesson(u, kind, extra) {
         msg.textContent = why[ev.error] || 'لم أسمعك جيداً، أعد المحاولة.';
         L.fails++; if (L.fails >= 2) { actions.replaceChildren(parentBtn()); }
       };
-      rec.onend = () => { rec = null; mic.classList.remove('live'); evaluate(); };
+      rec.onend = async () => { rec = null; mic.classList.remove('live'); await stopRec(); evaluate(); };
       mic.classList.add('live'); msg.textContent = '';
       try { rec.start(); } catch (e) { rec = null; mic.classList.remove('live'); }
     }
 
+    // جهاز بلا تعرّف على الكلام: نسجّل تسميعه ليسمعه أبوه ويؤكد
+    async function toggleRecordOnly() {
+      if (!canRec) return;
+      if (recorder && recorder.active) { mic.classList.remove('live'); await stopRec(); if (lastBlob) { msg.textContent = 'تم التسجيل. استمع إليه ثم أرسله لأبيك.'; actions.replaceChildren(el('button', { class: 'btn ghost', onclick: () => { stopAudio(); audio = new Audio(URL.createObjectURL(lastBlob)); audio.play().catch(() => {}); } }, 'استمع لتسجيلك'), parentBtn('أرسلتها لأبي (مع التسجيل)')); } else msg.textContent = 'لم يُلتقط صوت. أعد التسجيل.'; return; }
+      stopAudio(); actions.replaceChildren(); msg.textContent = 'جارٍ التسجيل… سمّع الآية ثم اضغط لإنهاء التسجيل.';
+      await startRec(); if (recorder) mic.classList.add('live'); else msg.textContent = 'لم أستطع فتح الميكروفون. اسمح له من إعدادات المتصفح.';
+    }
     async function evaluate() {
       if (!heardAlts.some(Boolean)) { if (!L.srErr) { L.fails++; msg.textContent = 'لم أسمع شيئاً. أعد.'; if (L.fails >= 2) actions.replaceChildren(parentBtn()); } return; }
       const best = heardAlts.map(h => compare(u.c, h)).sort((a, b) => b.score - a.score)[0];
@@ -440,14 +454,21 @@ function lesson(u, kind, extra) {
         if (L.fails >= 2) actions.append(parentBtn());
       }
     }
-    function parentBtn() {
+    function parentBtn(txt) {
       return el('button', { class: 'btn ghost', onclick: () => { if (kind === 'new' && !confirm('هل أبوك بجانبك الآن ليسمع تسميعك؟ لن تُحسب الآية إلا بعد أن يؤكد أنه سمعها.')) return; finish(kind === 'new' ? 'pending' : 'self', 0); } },
-        kind === 'new' ? 'سمّعتها لأبي (ينتظر تأكيده)' : kind === 'practice' ? 'أنهيت التدريب' : 'راجعتها بدون ميكروفون');
+        txt || (kind === 'new' ? 'سمّعتها لأبي (ينتظر تأكيده)' : kind === 'practice' ? 'أنهيت التدريب' : 'راجعتها بدون ميكروفون'));
     }
     async function finish(method, score) {
       mic.disabled = true;
       if (kind === 'practice') { done('practice'); return; }   // تدريب: لا يُسجَّل شيء
-      try { S = await api(resultApi(), 'POST', { key: u.key, kind, method, score, extra: !!extra, secs: Math.min(1800, Math.round((Date.now() - T0) / 1000)), diag: { sr: !!SR, err: L.srErr || '', fails: L.fails, native: !!window.NATIVE, ua: navigator.userAgent.slice(0, 80) } }); }
+      let recId = null;
+      if (lastBlob) {   // نسخة محلية 14 يوماً، ونسخة مؤقتة للخادم فقط إن كان التسميع ينتظر تأكيد الأب
+        try { await Rec.save({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kidId: TOKEN, label: `${u.name} ${u.i}`, date: new Date().toISOString().slice(0, 10), kind, t: Date.now(), mime: lastBlob.type }, lastBlob); } catch (_) {}
+        if (method === 'pending' && lastBlob.size <= 2e6) {
+          try { const r = await fetch(`/api/v2/kids/${TOKEN}/relay`, { method: 'POST', headers: { 'Content-Type': lastBlob.type || 'audio/webm', 'X-Session': (() => { try { return localStorage.getItem('ayah_session') || ''; } catch (_) { return ''; } })() }, body: lastBlob }); if (r.ok) recId = (await r.json()).rid; } catch (_) {}
+        }
+      }
+      try { S = await api(resultApi(), 'POST', { key: u.key, kind, method, score, ...(recId ? { rec: recId } : {}), extra: !!extra, secs: Math.min(1800, Math.round((Date.now() - T0) / 1000)), diag: { sr: !!SR, err: L.srErr || '', fails: L.fails, rec: lastBlob ? 'ok' : (recErr || (canRec ? 'none' : 'off')), native: !!window.NATIVE, ua: navigator.userAgent.slice(0, 80) } }); }
       catch (e) { msg.textContent = 'تعذّر الحفظ: ' + e.message; mic.disabled = false; return; }
       done(method);
     }
@@ -461,8 +482,8 @@ function lesson(u, kind, extra) {
     }
 
     const dockNodes = [msg];
-    if (SR) dockNodes.push(mic); else dockNodes.push(el('div', { class: 'note' }, 'هذا الجهاز أو المتصفح لا يدعم سماع التسميع. افتح ثبات من Chrome على أندرويد أو من تطبيق ثبات، أو سمّع لأبيك.'), parentBtn());
-    dockNodes.push(actions);
+    if (SR || canRec) dockNodes.push(mic); if (SR) {} else if (canRec) dockNodes.push(el('div', { class: 'note' }, 'هذا الجهاز لا يستطيع سماع تسميعك، لكنه يسجّله ليسمعه أبوك ويؤكد. اضغط الميكروفون وسمّع الآية.'), actions); else dockNodes.push(el('div', { class: 'note' }, 'هذا الجهاز أو المتصفح لا يدعم سماع التسميع. افتح ثبات من Chrome على أندرويد أو من تطبيق ثبات، أو سمّع لأبيك.'), parentBtn());
+    if (!dockNodes.includes(actions)) dockNodes.push(actions);
     setDock(topCard(''), ...dockNodes);
     PEND.zoom.classList.add('slim');
     show(pg.host);

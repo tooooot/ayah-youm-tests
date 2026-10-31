@@ -175,8 +175,12 @@ function pendingBox(k) {
   if (!k.pending.length) return null;
   return el('div', { class: 'card' }, el('h2', {}, `تسميع ينتظر تأكيدك — ${k.name}`),
     el('p', { class: 'note' }, 'لم يستطع التطبيق التحقق من تسميعه بالصوت. أكّد فقط إن سمعتَه بنفسك؛ لا تُحسب الآية ولا النقاط قبل تأكيدك.'),
-    ...k.pending.map(p => el('div', { style: 'padding:8px 0;border-bottom:1px solid var(--line)' }, el('div', { class: 'row sb' }, el('b', {}, p.label), el('span', { class: 'mute' }, p.date)), el('div', { class: 'mute', style: 'margin:2px 0 6px' }, WHY[p.why] || 'لم يُسمَّع بالصوت'),
-      el('div', { class: 'row' }, el('button', { class: 'btn sm', onclick: () => confirmSession(k, p, true) }, 'سمعتُه وصحّ'), el('button', { class: 'btn sm ghost', onclick: () => confirmSession(k, p, false) }, 'لم أسمعه / يعيد')))));
+    ...k.pending.map(p => { const slot = el('div'); return el('div', { style: 'padding:8px 0;border-bottom:1px solid var(--line)' }, el('div', { class: 'row sb' }, el('b', {}, p.label), el('span', { class: 'mute' }, p.date)), el('div', { class: 'mute', style: 'margin:2px 0 6px' }, WHY[p.why] || 'لم يُسمَّع بالصوت'),
+      p.hasRec ? [el('button', { class: 'btn sm ghost', onclick: () => playRec(k, p, slot) }, '▶ استمع لتسميعه'), slot] : el('div', { class: 'mute' }, 'لا يوجد تسجيل لهذا التسميع.'),
+      el('div', { class: 'row' }, el('button', { class: 'btn sm', onclick: () => confirmSession(k, p, true) }, 'سمعتُه وصحّ'), el('button', { class: 'btn sm ghost', onclick: () => confirmSession(k, p, false) }, 'لم أسمعه / يعيد'))); }));
+}
+async function playRec(k, p, slot) {   // يجلب التسجيل المؤقت بجلسة الأب ويشغّله
+  try { const r = await fetch(`/api/v2/kids/${k.id}/sessions/${p.sid}/recording`, { headers: { 'X-Session': ls.get('ayah_session') || '' } }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'لا يوجد تسجيل'); const b = await r.blob(); slot.replaceChildren(el('audio', { controls: true, autoplay: true, src: URL.createObjectURL(b), style: 'width:100%;margin-top:6px' })); } catch (e) { toast(errMsg(e)); }
 }
 async function confirmSession(k, p, ok) { try { await api(`v2/kids/${k.id}/confirm`, 'POST', { sid: p.sid, ok }); toast(ok ? 'تم التأكيد' : 'طُلبت الإعادة'); route(); } catch (e) { toast(errMsg(e)); } }
 const todayAr = () => { try { return new Intl.DateTimeFormat('ar-SA-u-ca-gregory', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()); } catch (_) { return ''; } };
@@ -258,6 +262,8 @@ function kidDetail(id) {
     return el('div', {}, el('div', { class: 'row', style: 'margin-bottom:12px' }, avatar(k.name, idx, 56), el('div', { class: 'grow' }, el('h1', { style: 'margin:0' }, k.name), statusChip(k))),
       ...(pendingBox(k) ? [pendingBox(k)] : []), inv,
       el('div', { class: 'card' }, el('h2', {}, 'المكافأة والنقاط'), el('p', { class: 'mute' }, 'كل يوم كامل = 100 نقطة. التطبيق لا يدفع؛ أنت تسلّم المكافأة.'), rw.node, el('button', { class: 'btn', onclick: async () => { try { await rw.save(); } catch (e) { toast(errMsg(e)); } } }, 'حفظ المكافأة')),
+      el('div', { class: 'card' }, el('div', { class: 'sw' }, el('div', {}, el('h2', { style: 'margin:0' }, 'تسجيل التسميع'), el('div', { class: 'mute' }, 'يُسجَّل صوت ولدك أثناء التسميع ويبقى على جهازه 14 يوماً. وإن لم يتحقق التطبيق من تسميعه تصلك نسخة مؤقتة لتسمعها (تُحذف بعد قرارك أو بعد 72 ساعة).')),
+        (() => { const t = el('button', { class: 'toggle' + (k.recordVoice !== false ? ' on' : ''), 'aria-label': 'تسجيل التسميع', onclick: async () => { const on = !t.classList.contains('on'); try { await api('v2/kids/' + k.id, 'PUT', { recordVoice: on }); t.classList.toggle('on', on); toast(on ? 'فُعّل التسجيل' : 'أُوقف التسجيل'); } catch (e) { toast(errMsg(e)); } } }); return t; })())),
       edit, el('button', { class: 'btn danger', onclick: async () => { if (await confirmTyped(`حذف ${k.name} وكل سجله نهائياً؟`)) { try { await api('v2/kids/' + k.id, 'DELETE'); go('kids'); } catch (e) { toast(errMsg(e)); } } } }, 'حذف الولد'));
   }, { back: 'kids' });
 }
@@ -298,11 +304,23 @@ function todayTab() {
 }
 const weekBars = recent => el('div', { class: 'week' }, recent.map(d => { let l = ''; try { l = new Date(d.date + 'T00:00:00Z').toLocaleDateString('ar', { weekday: 'short', timeZone: 'UTC' }); } catch (_) {}
   return el('div', { class: 'b' }, el('span', { class: 'v' }, Math.round(d.pts)), el('i', { style: `height:${Math.max(4, Math.round(d.pts * 0.62))}px;${d.pts ? '' : 'background:var(--line)'}` }), el('span', { class: 'd' }, l)); }));
+function recordingsCard() {   // تسجيلاتي: محفوظة على هذا الجهاز فقط 14 يوماً
+  const box = el('div', { class: 'card' }, el('h2', {}, 'تسجيلاتي'), el('p', { class: 'mute' }, 'تُحفظ على هذا الجهاز فقط 14 يوماً ثم تُحذف.'));
+  const p = curKid(); if (!p || typeof Rec === 'undefined' || !Rec.supported()) return '';
+  Rec.purge().catch(() => {}).then(() => Rec.list(p.kidId)).then(list => {
+    if (!list.length) { box.append(el('p', { class: 'mute' }, 'لا توجد تسجيلات بعد.')); return; }
+    list.forEach(r => { const row = el('div', { class: 'kidmini' }, el('div', { class: 'grow' }, el('h3', {}, r.label), el('div', { class: 'mute' }, r.date)),
+      el('button', { class: 'btn sm ghost', onclick: () => { const a = el('audio', { controls: true, autoplay: true, src: URL.createObjectURL(r.blob), style: 'width:100%' }); row.after(a); } }, '▶'),
+      el('button', { class: 'btn sm danger', onclick: async () => { await Rec.remove(r.id); row.remove(); } }, 'حذف')); box.append(row); });
+  }).catch(() => box.append(el('p', { class: 'mute' }, 'تعذّر قراءة التسجيلات.')));
+  return box;
+}
 function achvTab() {
   studentShell('achv', 'إنجازي', s => {
     const pts = s.points || {};
     return el('div', {}, el('div', { class: 'card' }, el('div', { class: 'stats' }, [[s.memorized, 'آية محفوظة'], [s.streak, 'أيام متواصلة'], [s.weekNew + '/7', 'هذا الأسبوع']].map(([v, l]) => el('div', { class: 'stat' }, el('b', {}, v), el('span', {}, l)))), el('div', { class: 'dots' }, s.last14.map(on => el('i', { class: 'dot' + (on ? ' on' : '') })))),
       el('div', { class: 'card' }, el('h2', {}, 'نقاط آخر 7 أيام'), el('p', { class: 'mute' }, 'اليوم الكامل = 100 نقطة'), weekBars(s.recent || [])),
+      recordingsCard(),
       el('div', { class: 'card' }, el('h2', {}, 'نقاط هذه الدورة'), el('div', { class: 'pts' }, el('b', {}, Math.round(pts.points)), el('span', { class: 'mute' }, `من ${pts.maxPoints}`)), el('div', { class: 'bar' }, el('i', { style: `width:${Math.min(100, Math.round(100 * pts.points / pts.maxPoints))}%` })),
         pts.mode !== 'none' && pts.showMoney ? el('p', { class: 'mute' }, `مكافأتك حتى الآن: ${pts.earned} من ${pts.amount} ريال`) : el('p', { class: 'mute' }, 'استمر كل يوم لتصل إلى أعلى نقاطك.')));
   });

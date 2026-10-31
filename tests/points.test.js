@@ -47,3 +47,14 @@ test('بلا مكافأة: النقاط تُحسب والمبلغ صفر', () =>
   const s = P.summary({}, '2026-11-10', ['ayah'], d => d === '2026-11-10');
   assert.equal(s.pointsToday, 100); assert.equal(s.earned, 0); assert.equal(s.mode, 'none');
 });
+
+test('دمج نتائج التعرّف: لا تكرار حين تكون كل نتيجة تراكمية (أندرويد)', () => {
+  const { joinResults } = require('../site/common.js');
+  const R = (...xs) => xs.map(x => [{ transcript: x }]);
+  assert.equal(joinResults(R('بسم', 'بسم الله', 'بسم الله الرحمن')), 'بسم الله الرحمن');
+  assert.equal(joinResults(R('كلمة', 'كلمة', 'كلمة', 'كلمة', 'كلمة')), 'كلمة');
+  assert.equal(joinResults(R('قل أعوذ', 'برب الناس')), 'قل أعوذ برب الناس', 'نتائج نهائية منفصلة تُضمّ');
+  assert.equal(joinResults(R('قل', 'قل أعوذ', 'قل أعوذ برب'), 0), 'قل أعوذ برب');
+  assert.equal(joinResults([]), ''); assert.equal(joinResults(null), '');
+  assert.equal(joinResults([[{ transcript: 'أ ب' }, { transcript: 'أ ج' }], [{ transcript: 'أ ب ج' }, { transcript: 'أ ج د' }]], 1), 'أ ج د');
+});

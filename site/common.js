@@ -54,4 +54,16 @@ function compare(expectedClean, heard) {
   }
   return { score: n ? L[0][0] / n : 0, hit };
 }
-if (typeof module !== 'undefined') module.exports = { norm, compare };
+// دمج نتائج التعرّف على الكلام بلا تكرار: Chrome على أندرويد يعيد كل نتيجة تراكمية تشمل ما قبلها (فتتكرر الكلمة 4-5 مرات إن ضممنا النتائج)،
+// فإذا بدأت نتيجة بنص السابقة (أو العكس) نأخذ الأطول فقط. alt = ترتيب البديل (0 الأرجح).
+function joinResults(results, alt = 0) {
+  const out = [];
+  for (const r of Array.from(results || [])) {
+    const p = String((r[alt] || r[0] || {}).transcript || '').trim(); if (!p) continue;
+    const last = out[out.length - 1];
+    if (last !== undefined && (p.startsWith(last) || last.startsWith(p))) out[out.length - 1] = p.length >= last.length ? p : last;
+    else out.push(p);
+  }
+  return out.join(' ');
+}
+if (typeof module !== 'undefined') module.exports = { norm, compare, joinResults };

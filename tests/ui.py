@@ -21,7 +21,8 @@ def get(path, sess):
     return json.load(urllib.request.urlopen(urllib.request.Request(B + path, headers={'X-Session': sess})))
 def acct(ident): return post('/api/auth/test', {'ident': ident})['session']
 INIT = """window.__fast=true;window.Audio=class{constructor(s){this.src=s;this.duration=0.03;this.readyState=4}play(){setTimeout(()=>this.onended&&this.onended(),30);return Promise.resolve()}pause(){}};
-window.SpeechRecognition=class{start(){}stop(){}};"""
+window.SpeechRecognition=class{start(){}stop(){}};
+try{navigator.mediaDevices.getUserMedia=async()=>{const ac=(window.__ac=window.__ac||new AudioContext());try{await ac.resume()}catch(e){}const o=ac.createOscillator(),d=ac.createMediaStreamDestination();o.connect(d);o.start();return d.stream}}catch(e){}"""
 errs = []
 try:
     with sync_playwright() as p:
@@ -89,12 +90,16 @@ try:
         check('تنبيه مبكر قبل الدرس: المتصفح لا يسمع التسميع', 'لا يسمع التسميع' in pg.inner_text('body')); pg.screenshot(path=OUT + '/19_no_sr_warning.png')
         pg.get_by_text('ابدأ الدرس').click(); pg.wait_for_selector('.mpage .mw.f', timeout=20000)
         pg.wait_for_function("[...document.querySelectorAll('button')].some(x=>x.textContent.includes('جاهز للتسميع') && !x.disabled)", timeout=90000); pg.get_by_text('جاهز للتسميع').click()
-        pg.wait_for_selector('.dock .note', timeout=10000); check('بلا دعم للصوت: رسالة واضحة وزر «سمّعتها لأبي»', 'لا يدعم سماع التسميع' in pg.inner_text('.dock') and pg.get_by_text('سمّعتها لأبي').count() == 1)
-        pg.get_by_text('سمّعتها لأبي').click(); pg.wait_for_selector('.hero', timeout=10000)
+        pg.wait_for_selector('.dock .note', timeout=10000); check('بلا تعرّف على الكلام: يسجّل تسميعه ليسمعه أبوه', 'يسجّله ليسمعه أبوك' in pg.inner_text('.dock') and pg.locator('.dock .mic').count() == 1)
+        pg.locator('.dock .mic').click(force=True); pg.wait_for_timeout(1800); pg.locator('.dock .mic').click(force=True)
+        pg.wait_for_selector('text=أرسلتها لأبي (مع التسجيل)', timeout=10000); pg.screenshot(path=OUT + '/21_record_only.png')
+        pg.get_by_text('أرسلتها لأبي (مع التسجيل)').click(); pg.wait_for_selector('.hero', timeout=15000)
+        local = pg.evaluate("Rec.list().then(l => l.map(x => x.kidId + ':' + x.blob.size))"); check('نسخة محلية على جهاز الولد (IndexedDB)', len(local) == 1 and int(local[0].split(':')[1]) > 100, local)
         st4 = get(f'/api/v2/kids/{k4["id"]}/state', gs)
-        check('الجلسة معلّقة بلا نقاط، والسبب يصل للأب', len(st4['pending']) == 1 and st4['pending'][0]['why'] == 'unsupported' and st4['points']['pointsToday'] == 0, st4['pending'])
+        check('الجلسة معلّقة بلا نقاط، والسبب يصل للأب، ومعها تسجيل', len(st4['pending']) == 1 and st4['pending'][0]['why'] == 'unsupported' and st4['pending'][0]['hasRec'] and st4['points']['pointsToday'] == 0, st4['pending'])
         pg2 = page(gs); pg2.goto(B + '/app'); pg2.wait_for_selector('.tabbar'); pg2.wait_for_timeout(600)
         check('الأب يرى: «تسميع ينتظر تأكيدك» مع سبب ويُطلب منه ألا يؤكد إلا إن سمعه', 'ينتظر تأكيدك' in pg2.inner_text('body') and 'جهازه لا يدعم' in pg2.inner_text('body') and 'سمعتُه وصحّ' in pg2.inner_text('body'))
+        pg2.get_by_text('استمع لتسميعه').click(); pg2.wait_for_selector('audio', timeout=10000); check('الأب يسمع التسجيل المؤقت', pg2.evaluate("fetch('/api/v2/kids/%s/sessions/%s/recording',{headers:{'X-Session':localStorage.getItem('ayah_session')}}).then(r=>r.status)" % (k4['id'], st4['pending'][0]['sid'])) == 200)
         pg2.screenshot(path=OUT + '/18_pending_confirm.png'); pg2.get_by_text('سمعتُه وصحّ').first.click(); pg2.wait_for_timeout(1200)
         st4 = get(f'/api/v2/kids/{k4["id"]}/state', gs); check('بعد تأكيد الأب: 100 نقطة اليوم', st4['points']['pointsToday'] == 100 and not st4['pending'], st4['points']['pointsToday'])
         pg2.close(); ctx4.close()
@@ -108,6 +113,15 @@ try:
         check('صوت ممنوع تلقائياً: رسالة «اضغط على الشاشة لتشغيل الصوت» بدل الصمت', True); pg.screenshot(path=OUT + '/20_audio_blocked.png')
         pg.mouse.click(200, 300); pg.wait_for_function("!document.querySelector('.turn').textContent.includes('اضغط على الشاشة')", timeout=10000)
         check('بعد الضغط يعمل الصوت ويتابع الدرس', 'استمع' in pg.inner_text('.turn') or 'دورك' in pg.inner_text('.turn') or 'اسمع' in pg.inner_text('.turn'), pg.inner_text('.turn')); ctx5.close()
+        # ٤د. تسميع بنتائج تراكمية (Chrome أندرويد): لا تتكرر الكلمة 4-5 مرات في النص الظاهر
+        k6 = post('/api/v2/kids', {'name': 'جود', 'age': 9, 'start': 114}, gs); cm = acct('kid-cumul'); post('/api/v2/invites/' + k6['invite']['url'].split('/i/')[1] + '/claim', {}, cm)
+        ctx6 = b.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx6.add_init_script(INIT)
+        ctx6.add_init_script("window.SpeechRecognition=class{start(){setTimeout(()=>{const R=(...x)=>x.map(t=>[{transcript:t}]);this.onresult&&this.onresult({results:R('بسم','بسم الله','بسم الله الرحمن','بسم الله الرحمن','بسم الله الرحمن')})},80)}stop(){setTimeout(()=>this.onend&&this.onend(),20)}};")
+        ctx6.add_init_script(f"try{{localStorage.setItem('ayah_session','{cm}')}}catch(e){{}}")
+        pg = ctx6.new_page(); pg.on('pageerror', lambda e: errs.append(str(e))); pg.goto(B + f'/lesson/{k6["id"]}?kind=new'); pg.wait_for_selector('text=ابدأ الدرس', timeout=15000); pg.get_by_text('ابدأ الدرس').click()
+        pg.wait_for_function("[...document.querySelectorAll('button')].some(x=>x.textContent.includes('جاهز للتسميع') && !x.disabled)", timeout=90000); pg.get_by_text('جاهز للتسميع').click(); pg.wait_for_selector('.dock .mic', timeout=10000)
+        pg.locator('.dock .mic').click(force=True); pg.wait_for_function("document.querySelector('.dock .say').textContent.includes('…')", timeout=10000)
+        shown = pg.inner_text('.dock .say').strip(); check('النص الظاهر بلا تكرار (النتائج التراكمية تُدمج)', shown == '… بسم الله الرحمن', shown); ctx6.close()
         # ٥. جهاز مشترك: ولدان على حساب واحد
         k2 = post('/api/v2/kids', {'name': 'نوف', 'age': 8}, gs); k3 = post('/api/v2/kids', {'name': 'ريم', 'age': 6}, gs); dev = acct('shared-ui')
         for k_ in (k2, k3): post('/api/v2/invites/' + k_['invite']['url'].split('/i/')[1] + '/claim', {}, dev)

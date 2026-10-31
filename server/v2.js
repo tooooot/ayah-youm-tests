@@ -7,7 +7,9 @@ const sha = x => crypto.createHash('sha256').update(String(x)).digest('hex');
 const HABITS = ['ayah', 'word'];
 
 function mount(ctx) {
-  const { db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot } = ctx;
+  const { db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR } = ctx;
+  const fs = require('fs'), path = require('path');
+  const readRaw = (req, max) => new Promise(res => { const ch = []; let n = 0; req.on('data', c => { n += c.length; if (n <= max) ch.push(c); }); req.on('end', () => res(n > max ? null : Buffer.concat(ch))); req.on('error', () => res(null)); });
   db.accounts = db.accounts || []; db.sessions = db.sessions || [];
 
   // ───── ترحيل v1 → v2 (عائلات owners/sessions القديمة إلى حسابات) ─────
@@ -59,7 +61,7 @@ function mount(ctx) {
     if (P.snapToday(k, today(), P.cleanPlan(k.plan || {}))) await save();
     const plan = P.cleanPlan(k.plan || {}), done = habitDone(k), recent = [];
     for (let i = 6; i >= 0; i--) { const d = P.addDays(today(), -i); recent.push({ date: d, pts: P.dayScore(d, habits, plan, done) }); }   // آخر 7 أيام بغضّ النظر عن حدود الدورة
-    const v = { ...kidState(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
+    const v = { ...kidState(k), recordVoice: k.recordVoice !== false, habits, plan, points: P.summary(k, today(), habits, done), recent };
     if (withInvite) { v.invite = { status: inviteStatus(k), url: k.invite ? `${ORIGIN}/i/${k.invite.token}` : null }; }
     return v;
   }
@@ -83,6 +85,17 @@ function mount(ctx) {
       return send(res, 404, { error: 'دعوة غير صحيحة أو أُلغيت' });
     }
     const a = acctOf(req); if (!a) return send(res, 401, { error: 'سجّل الدخول', login: true });
+    // رفع نسخة مؤقتة من تسجيل التسميع (للتسميع المعلّق بانتظار تأكيد الأب)
+    if (seg[0] === 'kids' && seg[1] && seg[2] === 'relay' && m === 'POST') {
+      const hit = kidFor(a, seg[1]); if (!hit) return send(res, 404, { error: 'غير موجود' });
+      const ct = String(req.headers['content-type'] || '').split(';')[0].toLowerCase();
+      if (!/^(audio|video)\/(webm|mp4|ogg|mpeg|x-m4a|aac|wav)$/.test(ct)) return send(res, 400, { error: 'صيغة غير مدعومة' });
+      const buf = await readRaw(req, 2e6); if (!buf || !buf.length) return send(res, 413, { error: 'التسجيل كبير أو فارغ' });
+      const id = rid(12); fs.writeFileSync(path.join(RELAY_DIR, id + '.bin'), buf);
+      db.relays.push({ id, kidId: hit.k.id, mime: ct, t: Date.now(), bytes: buf.length });
+      const mine = db.relays.filter(r => r.kidId === hit.k.id); while (mine.length > 10) dropRelay(mine.shift().id);
+      await save(); return send(res, 200, { rid: id });
+    }
     const body = m === 'GET' || m === 'DELETE' && !(req.headers['content-length'] > 0) ? {} : await readBody(req);
     const bad = (c, e) => send(res, c, { error: e });
 
@@ -140,18 +153,24 @@ function mount(ctx) {
       if (!sub && m === 'PUT') {
         const c = cleanKid({ ...k, ...body }); Object.assign(k, c);
         if (body.habits) k.habits = cleanHabits(body.habits);
+        if (typeof body.recordVoice === 'boolean') k.recordVoice = body.recordVoice;
         if (body.plan) { k.plan = P.cleanPlan({ ...(k.plan || {}), ...body.plan }); P.snapToday(k, today(), k.plan); k.snaps[today()] = (() => { const cy = P.cycleOf(today(), k.plan.cycleDay), mx = 100 * P.activeDays(cy, k.plan); return k.plan.mode === 'none' || !mx ? 0 : k.plan.amount / mx; })(); }
         await save(); return send(res, 200, await kidView(k, true));
       }
-      if (!sub && m === 'DELETE') { snapshot('kid'); unlink(k); f.kids = f.kids.filter(x => x !== k); await save(); return send(res, 200, { ok: true }); }
+      if (!sub && m === 'DELETE') { snapshot('kid'); dropKidRelays(k); unlink(k); f.kids = f.kids.filter(x => x !== k); await save(); return send(res, 200, { ok: true }); }
       if (sub === 'invite' && m === 'POST') { unlink(k); k.invite = newInvite(); await save(); return send(res, 200, { status: 'invited', url: `${ORIGIN}/i/${k.invite.token}` }); }
       if (sub === 'confirm' && m === 'POST') {
         const s = k.log.find(x => x.id === body.sid && x.status === 'pending'); if (!s) return bad(404, 'غير موجود');
-        s.status = body.ok ? 'ok' : 'rejected'; await save(); return send(res, 200, await kidView(k, true));
+        s.status = body.ok ? 'ok' : 'rejected'; if (s.rec) dropRelay(s.rec); await save(); return send(res, 200, await kidView(k, true));
+      }
+      if (sub === 'sessions' && seg[3] && seg[4] === 'recording' && m === 'GET') {   // استماع الأب للتسميع المعلّق
+        const s = k.log.find(x => x.id === seg[3]); const r = s && s.rec && relayOf(s.rec); if (!r) return bad(404, 'لا يوجد تسجيل (انتهت مدته أو لم يُرسل)');
+        try { const buf = fs.readFileSync(path.join(RELAY_DIR, r.id + '.bin')); res.writeHead(200, { 'Content-Type': r.mime, 'Content-Length': buf.length, 'Cache-Control': 'no-store' }); return res.end(buf); } catch (_) { return bad(404, 'لا يوجد تسجيل'); }
       }
       if (sub === 'sessions' && seg[3] && seg[4] === 'move' && m === 'POST') {   // نقل جلسة إلى ولد آخر
         const to = f.kids.find(x => x.id === body.toKid); const i = k.log.findIndex(x => x.id === seg[3]);
         if (!to || to === k || i < 0) return bad(404, 'غير موجود');
+        { const moved = k.log[i]; if (moved.rec && relayOf(moved.rec)) relayOf(moved.rec).kidId = to.id; }
         to.log.push(...k.log.splice(i, 1)); to.log.sort((x, y) => (x.date < y.date ? -1 : 1)); await save(); return send(res, 200, { ok: true });
       }
     }
@@ -160,7 +179,7 @@ function mount(ctx) {
       snapshot(a.role === 'guardian' ? 'family' : 'student');
       if (a.role === 'guardian') {
         const f = famOf(a);
-        if (f) { for (const k of f.kids) unlink(k); for (const gid of f.guardians) { const g = acctById(gid); if (g) { killSessionsOf(g); db.accounts = db.accounts.filter(x => x !== g); } } db.families = db.families.filter(x => x !== f); }
+        if (f) { for (const k of f.kids) { dropKidRelays(k); unlink(k); } for (const gid of f.guardians) { const g = acctById(gid); if (g) { killSessionsOf(g); db.accounts = db.accounts.filter(x => x !== g); } } db.families = db.families.filter(x => x !== f); }
         else { killSessionsOf(a); db.accounts = db.accounts.filter(x => x !== a); }
       } else {
         for (const pf of a.profiles) for (const f of db.families) { const k = f.kids.find(x => x.id === pf.kidId); if (k && k.invite && k.invite.claimedBy === a.id) { k.invite.claimedBy = null; k.invite.claimedAt = null; } }

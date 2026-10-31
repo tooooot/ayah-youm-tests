@@ -11,7 +11,7 @@ before(async () => {
   const v1 = { families: [{ id: 'f1', name: 'عائلة قديمة', parentToken: 'PT-OLD', owners: ['google:old-owner'], sessions: [sha('old-session')], created: '2026-10-30',
     kids: [{ id: 'k1', token: 'KT-OLD', name: 'زياد', age: 14, start: 67, reward: 'نزهة', rewardDays: 7, time: '06:30', rewardSince: null, created: '2026-10-30',
       log: [{ id: 'l1', date: '2026-10-31', key: '067001', kind: 'new', score: 1, method: 'voice', status: 'ok', secs: 100 }] }] }] };
-  E = await startEnv({ files: { 'db.json': v1 } });
+  E = await startEnv({ files: { 'db.json': v1 }, env: { RELAY_TTL_MS: '4000', RELAY_PURGE_MS: '500' } });
 });
 after(() => E && E.stop());
 const G = async (sub) => { const s = await E.signIn(sub); await E.call(s.session, 'POST', '/api/v2/role', { role: 'guardian' }); return s.session; };
@@ -133,4 +133,45 @@ test('حذف الحساب: الوصيّ يحذف العائلة، والابن �
 
 test('بلا جلسة: كل نداءات v2 ترفض ما عدا معاينة الدعوة', async () => {
   for (const [m, p] of [['GET', '/api/v2/me'], ['GET', '/api/v2/family'], ['POST', '/api/v2/kids']]) assert.equal((await E.call('', m, p, m === 'POST' ? {} : undefined)).r.status, 401);
+});
+
+const fsx = require('fs'), pathx = require('path');
+const relayFiles = () => { try { return fsx.readdirSync(pathx.join(E.dir, 'relay')).length; } catch (_) { return 0; } };
+const upload = (sess, kidId, body, ct = 'audio/webm') => fetch(E.base + `/api/v2/kids/${kidId}/relay`, { method: 'POST', headers: { 'content-type': ct, 'x-session': sess }, body });
+test('تسجيل التسميع: نسخة مؤقتة للمعلّق يسمعها الأب وحده وتُحذف بعد قراره', async () => {
+  const dad = await G('dad9'); await E.call(dad, 'POST', '/api/v2/family', { name: 'تسجيل' });
+  const a = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ر', age: 11, start: 114 })).j, b = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'س', age: 9, start: 114 })).j;
+  const kidA = (await E.signIn('kidA9')).session, kidB = (await E.signIn('kidB9')).session;
+  await E.call(kidA, 'POST', '/api/v2/invites/' + a.invite.url.split('/i/')[1] + '/claim'); await E.call(kidB, 'POST', '/api/v2/invites/' + b.invite.url.split('/i/')[1] + '/claim');
+  const bytes = Buffer.alloc(100, 7);
+  const up = await upload(kidA, a.id, bytes); assert.equal(up.status, 200); const rid = (await up.json()).rid;
+  assert.equal((await upload(kidB, a.id, bytes)).status, 404, 'ابن آخر لا يرفع على ملف أخيه');
+  assert.equal((await upload(kidA, a.id, bytes, 'text/html')).status, 400, 'صيغة غير صوتية');
+  assert.equal((await upload(kidA, a.id, Buffer.alloc(2100000, 1))).status, 413, 'أكبر من 2MB');
+  assert.equal((await upload('', a.id, bytes)).status, 401);
+  const st = (await E.call(kidA, 'GET', '/api/v2/kids/' + a.id + '/state')).j;
+  const r = await E.call(kidA, 'POST', '/api/v2/kids/' + a.id + '/result', { kind: 'new', key: st.next.key, method: 'pending', score: 0, secs: 80, rec: rid, diag: { sr: true, err: 'no-speech', rec: 'ok' } });
+  assert.equal(r.j.pending[0].hasRec, true); const sid = r.j.pending[0].sid;
+  const g = await fetch(E.base + `/api/v2/kids/${a.id}/sessions/${sid}/recording`, { headers: { 'x-session': dad } });
+  assert.equal(g.status, 200); assert.equal(g.headers.get('content-type'), 'audio/webm'); assert.equal((await g.arrayBuffer()).byteLength, 100);
+  assert.equal((await fetch(E.base + `/api/v2/kids/${a.id}/sessions/${sid}/recording`, { headers: { 'x-session': kidA } })).status, 403, 'الابن لا يسمع تسجيلات الأب');
+  assert.equal(relayFiles(), 1);
+  assert.equal((await E.call(dad, 'POST', '/api/v2/kids/' + a.id + '/confirm', { sid, ok: true })).r.status, 200);
+  assert.equal((await fetch(E.base + `/api/v2/kids/${a.id}/sessions/${sid}/recording`, { headers: { 'x-session': dad } })).status, 404, 'حُذفت بعد القرار');
+  assert.equal(relayFiles(), 0, 'الملف اختفى من القرص');
+  // مفتاح التسجيل
+  assert.equal((await E.call(dad, 'GET', '/api/v2/kids/' + a.id + '/state')).j.recordVoice, true);
+  assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + a.id, { recordVoice: false })).j.recordVoice, false);
+});
+test('النسخ المؤقتة تُحذف بعد المهلة وعند حذف الولد والحساب', async () => {
+  const dad = await G('dad10'); await E.call(dad, 'POST', '/api/v2/family', { name: 'مهلة' });
+  const k = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ن', age: 11, start: 114 })).j; const before = relayFiles();
+  const rid1 = (await (await upload(dad, k.id, Buffer.alloc(50, 1))).json()).rid; assert.equal(relayFiles(), before + 1);
+  await new Promise(r => setTimeout(r, 5200)); assert.equal(relayFiles(), before, 'انتهت المهلة فحُذفت');
+  const rid2 = (await (await upload(dad, k.id, Buffer.alloc(50, 2))).json()).rid; assert.equal(relayFiles(), before + 1);
+  const st = (await E.call(dad, 'GET', '/api/v2/kids/' + k.id + '/state')).j;
+  await E.call(dad, 'POST', '/api/v2/kids/' + k.id + '/result', { kind: 'new', key: st.next.key, method: 'pending', score: 0, rec: rid2 });
+  assert.equal((await E.call(dad, 'DELETE', '/api/v2/kids/' + k.id)).r.status, 200); assert.equal(relayFiles(), before, 'حذف الولد يحذف تسجيله');
+  const k2 = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'و', age: 10 })).j; await upload(dad, k2.id, Buffer.alloc(50, 3)); assert.equal(relayFiles(), before + 1);
+  assert.equal((await E.call(dad, 'DELETE', '/api/v2/account', { confirm: 'حذف' })).r.status, 200); assert.equal(relayFiles(), before, 'حذف الحساب يحذف تسجيلاته');
 });

@@ -54,6 +54,20 @@ function snapshot(reason) {
   } catch (e) { console.error('snapshot failed', e); }
 }
 
+// ───────── نسخ التسجيل المؤقتة: الاحتفاظ الطويل على جهاز الولد؛ هنا فقط ما ينتظر تأكيد الأب (يُحذف بعد قراره أو بعد 72 ساعة) ─────────
+const RELAY_DIR = path.join(DATA_DIR, 'relay'); fs.mkdirSync(RELAY_DIR, { recursive: true });
+const RELAY_TTL = +process.env.RELAY_TTL_MS || 72 * 3600e3;
+db.relays = db.relays || [];
+const relayOf = id => db.relays.find(r => r.id === id);
+function dropRelay(id) {
+  const r = relayOf(id); if (!r) return;
+  try { fs.unlinkSync(path.join(RELAY_DIR, r.id + '.bin')); } catch (_) {}
+  db.relays = db.relays.filter(x => x !== r);
+  for (const f of db.families) for (const k of f.kids) for (const s of k.log) if (s.rec === id) delete s.rec;
+}
+const dropKidRelays = k => { k.log.filter(s => s.rec).forEach(s => dropRelay(s.rec)); db.relays.filter(r => r.kidId === k.id).map(r => r.id).forEach(dropRelay); };   // وكل نسخة مرفوعة باسم الولد ولو لم تُربط بجلسة
+function purgeRelays() { const now = Date.now(), old = db.relays.filter(r => now - r.t > RELAY_TTL).map(r => r.id); old.forEach(dropRelay); if (old.length) save(); }
+
 // ───────── أدوات ─────────
 const rid = (n = 18) => crypto.randomBytes(n).toString('base64url');
 function today() { return new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10); } // توقيت الرياض
@@ -104,7 +118,7 @@ function kidState(kid) {
   const last14 = [];
   for (let i = 13; i >= 0; i--) last14.push(newDays.has(addDays(t, -i)));
   const weekNew = [...Array(7).keys()].filter(i => newDays.has(addDays(t, -i))).length;
-  const pending = kid.log.filter(s => s.status === 'pending').map(s => { let d = {}; try { d = JSON.parse(s.diag || '{}'); } catch (_) {} return { sid: s.id, date: s.date, label: label(s.key), why: d.sr === false ? 'unsupported' : (d.err || 'declined') }; });
+  const pending = kid.log.filter(s => s.status === 'pending').map(s => { let d = {}; try { d = JSON.parse(s.diag || '{}'); } catch (_) {} return { sid: s.id, date: s.date, label: label(s.key), why: d.sr === false ? 'unsupported' : (d.err || 'declined'), hasRec: !!(s.rec && relayOf(s.rec)) }; });
   return {
     id: kid.id, name: kid.name, age: kid.age, start: kid.start, startName: SURAH[kid.start].name,
     reward: kid.reward, rewardDays: kid.rewardDays, time: kid.time,
@@ -182,6 +196,7 @@ async function submitResult(k, body) {
       const st = kidState(k), t = today();
       const score = Math.max(0, Math.min(1, +body.score || 0));
       const secs = Math.max(0, Math.min(3600, Math.round(+body.secs || 0)));   // مدة الدرس الفعلية (ثوانٍ)
+      const rec = body.rec && relayOf(String(body.rec)) && relayOf(String(body.rec)).kidId === k.id ? String(body.rec) : '';
       const diag = body.diag && typeof body.diag === 'object' ? JSON.stringify(body.diag).slice(0, 300) : '';   // لماذا لم يسمع التطبيق (تشخيص)
       if (body.kind === 'new') {
         // آية جديدة ثانية في اليوم مسموحة بطلب صريح (extra) وبحد 4 آيات جديدة يومياً
@@ -191,7 +206,7 @@ async function submitResult(k, body) {
         if (body.method === 'voice') { if (score < st.threshold) return { err: [400, 'low'] }; status = 'ok'; }
         else if (body.method === 'pending') status = 'pending';
         else return { err: [400, 'طريقة غير صحيحة'] };
-        k.log.push({ id: rid(6), date: t, key: body.key, kind: 'new', score, method: body.method, status, secs, ...(diag ? { diag } : {}) });
+        k.log.push({ id: rid(6), date: t, key: body.key, kind: 'new', score, method: body.method, status, secs, ...(diag ? { diag } : {}), ...(rec && status === 'pending' ? { rec } : {}) });
       } else if (body.kind === 'review') {
         if (!st.reviews.some(u => u.key === body.key)) return { err: [409, 'ليست مراجعة اليوم'] };
         const fail = body.method === 'voice' && score < st.threshold;
@@ -214,7 +229,7 @@ async function api(req, res, url) {
       return send(res, 200, { family: f.name, kids: f.kids.map(k => ({ ...kidState(k), token: k.token })), origin: ORIGIN, linked: (f.guardians || []).length });
     if (req.method === 'DELETE' && rest[0] === 'account') {   // حذف الحساب وكل بيانات العائلة نهائياً (شرط المتجرين)
       if (body.confirm !== 'حذف') return send(res, 400, { error: 'اكتب «حذف» للتأكيد' });
-      snapshot('family');
+      snapshot('family'); f.kids.forEach(dropKidRelays);
       for (const gid of f.guardians || []) { db.accounts = (db.accounts || []).filter(x => x.id !== gid); db.sessions = (db.sessions || []).filter(x => x.aid !== gid); }
       db.families = db.families.filter(x => x !== f); await save(); return send(res, 200, { ok: true });
     }
@@ -227,7 +242,7 @@ async function api(req, res, url) {
     const k = f.kids.find(x => x.id === rest[1]);
     if (rest[0] === 'kids' && k) {
       if (req.method === 'PUT') { Object.assign(k, cleanKid({ ...k, ...body })); await save(); return send(res, 200, { ok: true }); }
-      if (req.method === 'DELETE') { snapshot('kid'); f.kids = f.kids.filter(x => x !== k); await save(); return send(res, 200, { ok: true }); }
+      if (req.method === 'DELETE') { snapshot('kid'); dropKidRelays(k); f.kids = f.kids.filter(x => x !== k); await save(); return send(res, 200, { ok: true }); }
       if (req.method === 'POST' && rest[2] === 'reward-given') { k.rewardSince = today(); await save(); return send(res, 200, { ok: true }); }
       if (req.method === 'GET' && rest[2] === 'ics') {
         const [hh, mm] = k.time.split(':').map(Number);
@@ -244,7 +259,7 @@ async function api(req, res, url) {
     if (req.method === 'POST' && rest[0] === 'confirm') {
       for (const kk of f.kids) {
         const s = kk.log.find(x => x.id === body.sid && x.status === 'pending');
-        if (s) { s.status = body.ok ? 'ok' : 'rejected'; await save(); return send(res, 200, { ok: true }); }
+        if (s) { s.status = body.ok ? 'ok' : 'rejected'; if (s.rec) dropRelay(s.rec); await save(); return send(res, 200, { ok: true }); }
       }
       return send(res, 404, { error: 'غير موجود' });
     }
@@ -264,7 +279,7 @@ async function api(req, res, url) {
   return send(res, 404, { error: 'غير موجود' });
 }
 
-var V2 = require('./v2').mount({ db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot });
+var V2 = require('./v2').mount({ db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR });
 if (V2.migrate()) { try { fs.copyFileSync(DB_FILE, path.join(DATA_DIR, 'db.pre-v2.json')); } catch (_) {} save(); }
 const authHandler = require('./auth').mount({ db, save, rid, today, ORIGIN, send, readBody, famByParent, shaOf, REQUIRE_LOGIN, V2 });
 const TEAM = process.env.APPLE_TEAM_PUB || '823299AJGN', BUNDLE = 'net.wardyat.thabat';
@@ -320,6 +335,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 backup(); setInterval(backup, 6 * 3600e3);
+purgeRelays(); setInterval(purgeRelays, +process.env.RELAY_PURGE_MS || 3600e3);
 
 if (require.main === module) {
   if (process.argv[2] === 'new-family') {
