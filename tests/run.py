@@ -77,7 +77,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
         # ───── ٤. محاكاة دروس كاملة بساعة مزيفة ─────
         def sim(key, expect_chunk=None):
             ctx2 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx2.add_init_script(INIT); pg2 = ctx2.new_page(); pg2.on('pageerror', lambda e: errs.append(str(e)))
-            pg2.clock.install(); pg2.goto(B + '/k/' + TOK['ص']); pg2.wait_for_selector('text=ابدأ الآن'); pg2.evaluate("(u)=>lesson(u,'practice')", UN[key]); pg2.wait_for_selector('.mpage .mw.f'); pg2.wait_for_timeout(300)
+            pg2.clock.install(); pg2.goto(B + '/k/' + TOK['ص']); pg2.wait_for_selector('text=ابدأ الآن'); pg2.evaluate("(u)=>lesson(u,'practice')", UN[key]); pg2.wait_for_selector('.mpage .mw.f'); pg2.add_style_tag(content='*{transition:none!important;animation:none!important}'); pg2.wait_for_timeout(300)
             seq = []; t = 0; mism = 0; stale = 0; blurred = 0; turn_bad = 0; saw_mine = 0; clicked = False
             while t < 900:
                 pg2.clock.run_for(500); t += .5
