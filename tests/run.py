@@ -78,19 +78,27 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
         def sim(key, expect_chunk=None):
             ctx2 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx2.add_init_script(INIT); pg2 = ctx2.new_page(); pg2.on('pageerror', lambda e: errs.append(str(e)))
             pg2.clock.install(); pg2.goto(B + '/k/' + TOK['ص']); pg2.wait_for_selector('text=ابدأ الآن'); pg2.evaluate("(u)=>lesson(u,'practice')", UN[key]); pg2.wait_for_selector('.mpage .mw.f'); pg2.wait_for_timeout(300)
-            seq = []; t = 0; mism = 0; saw_mine = 0; clicked = False
+            seq = []; t = 0; mism = 0; stale = 0; blurred = 0; turn_bad = 0; saw_mine = 0; clicked = False
             while t < 900:
                 pg2.clock.run_for(500); t += .5
-                st = pg2.evaluate("""()=>{const tb=document.querySelector('.turn');const c=[...document.querySelectorAll('.zoombox .w')].findIndex(x=>x.classList.contains('cur'));const pc=[...document.querySelectorAll('.mpage .mw.f:not(.me)')].findIndex(x=>x.classList.contains('cur'));
-                  return {b:tb?tb.textContent:'',c,pc,ready:[...document.querySelectorAll('.dock .btn')].some(x=>x.textContent.includes('جاهز للتسميع')&&!x.disabled),n:(document.querySelector('.dock .mute.say')||{}).textContent||''}}""")
+                st = pg2.evaluate("""()=>{const tb=document.querySelector('.turn');const c=[...document.querySelectorAll('.zoombox .w')].findIndex(x=>x.classList.contains('cur'));const pc=document.querySelectorAll('.mpage .mw.cur').length;
+                  const op=x=>{const e=document.querySelector(x);return e?parseFloat(getComputedStyle(e).opacity):null};
+                  return {b:tb?tb.textContent:'',c,pc,tm:document.body.classList.contains('tm'),tl:document.body.classList.contains('tl'),zm:document.querySelector('.zoombox').classList.contains('mine'),op:op('.mpage .mw:not(.f)'),blur:getComputedStyle(document.querySelector('.mpage .mw:not(.f)')).filter,
+                  dots:document.querySelectorAll('.dots2 i').length,ready:[...document.querySelectorAll('.dock .btn')].some(x=>x.textContent.includes('جاهز للتسميع')&&!x.disabled),stale:!!document.querySelector('.dock .mute.say,.dock .bar')}}""")
                 if not seq or seq[-1] != st['b']: seq.append(st['b'])
-                if st['c'] != st['pc']: mism += 1
+                if st['pc']: mism += 1                      # نقطة تركيز واحدة: لا تلوين متحرك في الصفحة
+                if st['stale']: stale += 1                  # لا عدّاد نصي ولا شريط تقدّم
+                if st['blur'] not in ('none', ''): blurred += 1
+                if st['tm']:
+                    if not (st['zm'] and st['op'] is not None and st['op'] <= .1): turn_bad += 1   # شاشة دوره تتغيّر وتخفت الصفحة
+                elif 'استمع' in st['b'] or 'اسمع' in st['b']:
+                    if not (st['tl'] and not st['zm']): turn_bad += 1
                 if 'دورك' in st['b']:
                     saw_mine += 1
                     if not clicked and saw_mine == 3: pg2.get_by_text('✓ انتهيت').click(); clicked = True
                 if st['ready']: break
             plays = pg2.evaluate('window.__plays')
-            return pg2, ctx2, {'secs': t, 'plays': len(plays), 'slow': sum(1 for x in plays if x[0] == 'S'), 'mism': mism, 'seq': seq, 'ready': st['ready'], 'mine': saw_mine}
+            return pg2, ctx2, {'secs': t, 'plays': len(plays), 'slow': sum(1 for x in plays if x[0] == 'S'), 'mism': mism, 'stale': stale, 'blurred': blurred, 'turn_bad': turn_bad, 'dots': st['dots'], 'seq': seq, 'ready': st['ready'], 'mine': saw_mine}
         b2 = p.chromium.launch() if False else None
     with sync_playwright() as p2:
         b2 = p2.chromium.launch()
@@ -98,7 +106,10 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
             pg2, ctx2, r = sim(key)
             ch = 'ch' in plan[key]
             check(f'درس {kind} ({key}): ينتهي ويظهر «جاهز للتسميع»', r['ready'], f"{r['secs']:.0f}s")
-            check(f'درس {kind}: تلوين البطاقة = تلوين الصفحة', r['mism'] == 0, r['mism'])
+            check(f'درس {kind}: نقطة تركيز واحدة (لا تلوين متحرك في الصفحة)', r['mism'] == 0, r['mism'])
+            check(f'درس {kind}: الصفحة بلا تمويه وبلا عدّاد/شريط', r['blurred'] == 0 and r['stale'] == 0, (r['blurred'], r['stale']))
+            check(f'درس {kind}: شاشة «دورك» تختلف (إطار أخضر + صفحة تخفت) وشاشة الاستماع هادئة', r['turn_bad'] == 0, r['turn_bad'])
+            check(f'درس {kind}: نقاط التقدّم بعدد الخطوات', r['dots'] >= 10, r['dots'])
             if not ch: check(f'درس {kind}: استماعات وترديدات متساوية (10+10، وتقلّ حتى 5+5 لسقف 5 دقائق)', r['plays'] in (10, 12, 14, 16, 18, 20) and r['slow'] == 1, r['plays'])
             else: check(f'درس {kind}: مقاطع ثم كاملة', r['plays'] >= 10, r['plays'])
             check(f'درس {kind}: بانر «دورك» يظهر', r['mine'] > 0, r['seq'][:4])
@@ -113,6 +124,15 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
                 pg2.evaluate("()=>window.__say='ما غرك بربك الكريم'"); pg2.locator('.mic').click(force=True); pg2.clock.run_for(300); pg2.locator('.mic').click(force=True); pg2.clock.run_for(1500); pg2.wait_for_timeout(400)
                 n = len(W[key]); check('تلوين نتيجة آية «يا أيها» (hit/miss بعدد كلماتها)', pg2.locator('.res .w.hit, .res .w.miss').count() == n, pg2.locator('.res .w').count())
             ctx2.close()
+        # تغذية راجعة حيّة: الكلمات التي ينطقها تخضرّ أثناء دوره (تعرّف الكلام مُحاكى)
+        ctx3 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx3.add_init_script(INIT + "window.__fast=true;window.__live=true;"); pg3 = ctx3.new_page(); pg3.on('pageerror', lambda e: errs.append(str(e)))
+        pg3.goto(B + '/k/' + TOK['ص']); pg3.wait_for_selector('text=ابدأ الآن'); pg3.evaluate("(s)=>window.__say=s", UN['114002']['c']); pg3.evaluate("(u)=>lesson(u,'practice')", UN['114002']); pg3.wait_for_selector('.mpage .mw.f')
+        seen = 0
+        for _ in range(160):
+            pg3.wait_for_timeout(250)
+            if pg3.evaluate("document.body.classList.contains('tm')?document.querySelectorAll('.zoombox .w.hit').length:0"): seen += 1; break
+        check('تعرّف حيّ: كلمات الطالب تخضرّ في دوره', seen > 0, seen)
+        ctx3.close()
         b2.close()
     check('لا أخطاء جافاسكربت', not errs, errs[:5])
 finally:
