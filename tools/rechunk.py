@@ -16,7 +16,7 @@ def cuts_for(k, w):
         a, c = min(i, j), max(i, j); segs[a:c + 1] = [[segs[a][0], segs[c][1]]]
     out = []
     for a, c in segs:
-        parts = math.ceil((c - a) / 12)
+        parts = math.ceil((c - a) / 14)
         for p in range(parts): out.append([a + round((c - a) * p / parts), a + round((c - a) * (p + 1) / parts)])
     return out
 res = {}
