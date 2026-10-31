@@ -13,14 +13,14 @@
 <link rel="icon" href="/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Noto+Naskh+Arabic:wght@400;700&display=swap">
-<link rel="stylesheet" href="/app.css">
-<link rel="stylesheet" href="/frame.css">
+<link rel="stylesheet" href="/app.css?v=20261031c">
+<link rel="stylesheet" href="/frame.css?v=20261031c">
 <script>document.head.insertAdjacentHTML('beforeend','<link rel="manifest" href="/manifest/k/'+location.pathname.split('/')[2]+'.json">')</script>
 </head>
 <body>
 <div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
-<script src="/common.js"></script>
-<script src="/mushaf.js"></script>
+<script src="/common.js?v=20261031c"></script>
+<script src="/mushaf.js?v=20261031c"></script>
 <script>
 try { screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait').catch(() => {}); } catch (_) {}
 const TOKEN = location.pathname.split('/')[2];
@@ -99,7 +99,7 @@ function stopAudio() { if (audio) { audio.onended = null; audio.pause(); audio =
 const audioOf = key => new Audio('/audio/' + key + '.mp3');
 
 async function load() {
-  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json').then(r => r.json()).catch(() => ({})); S = await api('kid/' + TOKEN); home(); }
+  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json?v=20261031c').then(r => r.json()).catch(() => ({})); S = await api('kid/' + TOKEN); home(); }
   catch (e) { show(el('div', { class: 'card' }, el('h2', {}, 'الرابط غير صحيح'), el('p', { class: 'mute' }, 'اطلب من أبيك الرابط الخاص بك.'))); }
 }
 
@@ -206,7 +206,7 @@ function lesson(u, kind, extra) {
       const w = e && e.w, dim = w ? (i => i < w[0] || i >= w[1]) : (() => false);
       if (pg.box.c) pg.box.c.setDim(dim);
     };
-    pg.box.onReady = c => apply(plan[Math.min(r, plan.length - 1)]);
+    pg.box.onReady = c => { c.el.classList.add('dimrest'); apply(plan[Math.min(r, plan.length - 1)]); };
     const hit = fn => pg.box.c && pg.box.c.setHit(fn);
     const info = PLAN[u.key] || {};
     const wt = words.map(w => (w.replace(/[^ء-ي]/g, '').length || 1) + .5);
@@ -357,7 +357,7 @@ function lesson(u, kind, extra) {
     const st = strip(), pg = page();
     let peeking = false;
     // لا بطاقة علوية: الصفحة نفسها هي الشاشة؛ كلمات الآية مخفية فيها (اللمس يكشف كلمة) وتُلوَّن النتيجة عليها
-    const hideAll = () => { const c = pg.box.c; if (c) { c.setHidden(() => true); c.setHit(() => false); c.setMiss(() => false); } };
+    const hideAll = () => { const c = pg.box.c; if (c) { c.setHidden(() => true); c.setHit && c.setHit(() => false); c.setMiss && c.setMiss(() => false); } };
     pg.box.onReady = hideAll;
     const msg = el('div', { class: 'say' }, '');
     const actions = el('div');

@@ -125,6 +125,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
             check(f'درس {kind}: زمن ≤ 330ث', r['secs'] <= 330, r['secs'])
             # تسميع
             pg2.get_by_text('جاهز للتسميع').click(); pg2.wait_for_selector('.mic'); pg2.wait_for_timeout(300)
+            check(f'التسميع {key}: الصفحة بألوانها (لا تعتيم) والميكروفون يستجيب', pg2.evaluate("parseFloat(getComputedStyle(document.querySelector('.mpage .mw:not(.f)')).opacity)") == 1 and pg2.evaluate("!document.querySelector('.mpage').classList.contains('dimrest')"), '')
             pg2.evaluate("(s)=>window.__say=s", UN[key]['c']); pg2.locator('.mic').click(force=True); pg2.clock.run_for(300); pg2.locator('.mic').click(force=True); pg2.clock.run_for(2000); pg2.wait_for_timeout(500)
             ok = pg2.get_by_text('ثبّتَّ').count() > 0
             check(f'تسميع صحيح {key} يُنجح', ok, pg2.inner_text('body')[:80])
