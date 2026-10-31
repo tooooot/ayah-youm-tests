@@ -7,7 +7,7 @@ const sha = x => crypto.createHash('sha256').update(String(x)).digest('hex');
 const HABITS = ['ayah', 'word'];
 
 function mount(ctx) {
-  const { db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult } = ctx;
+  const { db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot } = ctx;
   db.accounts = db.accounts || []; db.sessions = db.sessions || [];
 
   // ───── ترحيل v1 → v2 (عائلات owners/sessions القديمة إلى حسابات) ─────
@@ -139,7 +139,7 @@ function mount(ctx) {
         if (body.plan) { k.plan = P.cleanPlan({ ...(k.plan || {}), ...body.plan }); P.snapToday(k, today(), k.plan); k.snaps[today()] = (() => { const cy = P.cycleOf(today(), k.plan.cycleDay), mx = 100 * P.activeDays(cy, k.plan); return k.plan.mode === 'none' || !mx ? 0 : k.plan.amount / mx; })(); }
         await save(); return send(res, 200, await kidView(k, true));
       }
-      if (!sub && m === 'DELETE') { unlink(k); f.kids = f.kids.filter(x => x !== k); await save(); return send(res, 200, { ok: true }); }
+      if (!sub && m === 'DELETE') { snapshot('kid'); unlink(k); f.kids = f.kids.filter(x => x !== k); await save(); return send(res, 200, { ok: true }); }
       if (sub === 'invite' && m === 'POST') { unlink(k); k.invite = newInvite(); await save(); return send(res, 200, { status: 'invited', url: `${ORIGIN}/i/${k.invite.token}` }); }
       if (sub === 'confirm' && m === 'POST') {
         const s = k.log.find(x => x.id === body.sid && x.status === 'pending'); if (!s) return bad(404, 'غير موجود');
@@ -153,6 +153,7 @@ function mount(ctx) {
     }
     if (seg[0] === 'account' && m === 'DELETE') {
       if (body.confirm !== 'حذف') return bad(400, 'اكتب «حذف» للتأكيد');
+      snapshot(a.role === 'guardian' ? 'family' : 'student');
       if (a.role === 'guardian') {
         const f = famOf(a);
         if (f) { for (const k of f.kids) unlink(k); for (const gid of f.guardians) { const g = acctById(gid); if (g) { killSessionsOf(g); db.accounts = db.accounts.filter(x => x !== g); } } db.families = db.families.filter(x => x !== f); }

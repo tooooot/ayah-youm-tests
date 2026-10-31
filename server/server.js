@@ -35,11 +35,23 @@ function save() {
 function backup() {
   try {
     if (!fs.existsSync(DB_FILE)) return;
-    const f = path.join(BACKUPS, 'db-' + today() + '.json');
+    const d = new Date(Date.now() + 3 * 3600e3).toISOString();   // توقيت الرياض
+    const f = path.join(BACKUPS, 'db-' + d.slice(0, 10) + '-' + d.slice(11, 13) + d.slice(14, 16) + '.json');
     fs.copyFileSync(DB_FILE, f);
     const all = fs.readdirSync(BACKUPS).filter(x => x.startsWith('db-')).sort();
-    all.slice(0, Math.max(0, all.length - 30)).forEach(x => fs.unlinkSync(path.join(BACKUPS, x)));
+    all.slice(0, Math.max(0, all.length - 60)).forEach(x => fs.unlinkSync(path.join(BACKUPS, x)));
   } catch (e) { console.error('backup failed', e); }
+}
+// لقطة قبل أي حذف (حساب/عائلة/ولد): تُحفظ 30 يوماً ثم تُمحى، وتُذكر في سياسة الخصوصية
+function snapshot(reason) {
+  try {
+    if (!fs.existsSync(DB_FILE)) return;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    fs.copyFileSync(DB_FILE, path.join(BACKUPS, `pre-delete-${reason}-${ts}.json`));
+    for (const x of fs.readdirSync(BACKUPS).filter(n => n.startsWith('pre-delete-'))) {
+      const p = path.join(BACKUPS, x); if (Date.now() - fs.statSync(p).mtimeMs > 30 * 86400e3) fs.unlinkSync(p);
+    }
+  } catch (e) { console.error('snapshot failed', e); }
 }
 
 // ───────── أدوات ─────────
@@ -201,6 +213,7 @@ async function api(req, res, url) {
       return send(res, 200, { family: f.name, kids: f.kids.map(k => ({ ...kidState(k), token: k.token })), origin: ORIGIN, linked: (f.guardians || []).length });
     if (req.method === 'DELETE' && rest[0] === 'account') {   // حذف الحساب وكل بيانات العائلة نهائياً (شرط المتجرين)
       if (body.confirm !== 'حذف') return send(res, 400, { error: 'اكتب «حذف» للتأكيد' });
+      snapshot('family');
       for (const gid of f.guardians || []) { db.accounts = (db.accounts || []).filter(x => x.id !== gid); db.sessions = (db.sessions || []).filter(x => x.aid !== gid); }
       db.families = db.families.filter(x => x !== f); await save(); return send(res, 200, { ok: true });
     }
@@ -213,7 +226,7 @@ async function api(req, res, url) {
     const k = f.kids.find(x => x.id === rest[1]);
     if (rest[0] === 'kids' && k) {
       if (req.method === 'PUT') { Object.assign(k, cleanKid({ ...k, ...body })); await save(); return send(res, 200, { ok: true }); }
-      if (req.method === 'DELETE') { f.kids = f.kids.filter(x => x !== k); await save(); return send(res, 200, { ok: true }); }
+      if (req.method === 'DELETE') { snapshot('kid'); f.kids = f.kids.filter(x => x !== k); await save(); return send(res, 200, { ok: true }); }
       if (req.method === 'POST' && rest[2] === 'reward-given') { k.rewardSince = today(); await save(); return send(res, 200, { ok: true }); }
       if (req.method === 'GET' && rest[2] === 'ics') {
         const [hh, mm] = k.time.split(':').map(Number);
@@ -250,7 +263,7 @@ async function api(req, res, url) {
   return send(res, 404, { error: 'غير موجود' });
 }
 
-var V2 = require('./v2').mount({ db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult });
+var V2 = require('./v2').mount({ db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot });
 if (V2.migrate()) { try { fs.copyFileSync(DB_FILE, path.join(DATA_DIR, 'db.pre-v2.json')); } catch (_) {} save(); }
 const authHandler = require('./auth').mount({ db, save, rid, today, ORIGIN, send, readBody, famByParent, shaOf, REQUIRE_LOGIN, V2 });
 const TEAM = process.env.APPLE_TEAM_PUB || '823299AJGN', BUNDLE = 'net.wardyat.thabat';

@@ -128,6 +128,8 @@ test('حذف الحساب: الوصيّ يحذف العائلة، والابن �
   assert.equal((await E.call(dad, 'GET', '/api/v2/family')).j.kids[0].invite.status, 'invited', 'الدعوة عادت متاحة');
   assert.equal((await E.call(dad, 'DELETE', '/api/v2/account', { confirm: 'حذف' })).r.status, 200);
   assert.equal((await E.call(dad, 'GET', '/api/v2/me')).r.status, 401);
+  const bk = require('fs').readdirSync(require('path').join(E.dir, 'backups')).filter(n => n.startsWith('pre-delete-'));
+  assert.ok(bk.length >= 2, 'لقطة احتياطية قبل كل حذف (تُمحى بعد 30 يوماً)');
 });
 
 test('بلا جلسة: كل نداءات v2 ترفض ما عدا معاينة الدعوة', async () => {
