@@ -105,8 +105,9 @@ function accountCard() {
   const c = el('div', { class: 'card' }, el('h2', {}, 'الحساب'));
   if (D.linked) c.append(el('p', { class: 'mute' }, '✓ حسابك مرتبط بـ Google/Apple: يمكنك الدخول من أي جهاز بالحساب نفسه.'));
   else c.append(el('p', { class: 'mute' }, 'اربط حسابك كي تستعيد عائلتك إن فقدتَ الجوال أو الرابط.'),
-    el('button', { class: 'btn', onclick: () => authGo('google') }, 'ربط حسابي بـ Google'),
-    el('button', { class: 'btn ghost', onclick: () => authGo('apple') }, 'ربط حسابي بـ Apple'));
+    el('button', { class: 'btn', 'data-p': 'google', onclick: () => authGo('google') }, 'ربط حسابي بـ Google'),
+    el('button', { class: 'btn ghost', 'data-p': 'apple', onclick: () => authGo('apple') }, 'ربط حسابي بـ Apple'));
+  fetch('/api/auth/config').then(r => r.json()).then(cfg => c.querySelectorAll('[data-p]').forEach(b => { if (!cfg[b.dataset.p]) b.style.display = 'none'; })).catch(() => {});
   c.append(
     el('button', { class: 'btn ghost', onclick: () => { try { localStorage.removeItem('ayah_parent'); } catch (_) {} location.href = '/app'; } }, 'خروج من هذا الجهاز'),
     el('button', { class: 'btn ghost', style: 'color:#c0392b', onclick: async () => {
