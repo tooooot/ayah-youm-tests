@@ -169,7 +169,8 @@ async function api(req, res, url) {
     const rest = p.slice(3);
     if (req.method === 'GET' && rest.length === 0)
       return send(res, 200, { family: f.name, kids: f.kids.map(k => ({ ...kidState(k), token: k.token })), origin: ORIGIN, linked: (f.owners || []).length });
-    if (req.method === 'DELETE' && rest[0] === 'account') {   // حذف الحساب وكل بيانات العائلة نهائياً (شرط المتجرين)
+    if (req.method === 'DELETE' && rest[0] === 'account') {
+      if (f.demo) return send(res, 403, { error: 'حساب تجريبي لا يُحذف' });   // حذف الحساب وكل بيانات العائلة نهائياً (شرط المتجرين)
       if (body.confirm !== 'حذف') return send(res, 400, { error: 'اكتب «حذف» للتأكيد' });
       db.families = db.families.filter(x => x !== f); await save(); return send(res, 200, { ok: true });
     }
@@ -182,6 +183,7 @@ async function api(req, res, url) {
     const k = f.kids.find(x => x.id === rest[1]);
     if (rest[0] === 'kids' && k) {
       if (req.method === 'PUT') { Object.assign(k, cleanKid({ ...k, ...body })); await save(); return send(res, 200, { ok: true }); }
+      if (req.method === 'DELETE' && f.demo) return send(res, 403, { error: 'حساب تجريبي' });
       if (req.method === 'DELETE') { f.kids = f.kids.filter(x => x !== k); await save(); return send(res, 200, { ok: true }); }
       if (req.method === 'POST' && rest[2] === 'reward-given') { k.rewardSince = today(); await save(); return send(res, 200, { ok: true }); }
       if (req.method === 'GET' && rest[2] === 'ics') {
@@ -249,7 +251,7 @@ const server = http.createServer(async (req, res) => {
       const ra = req.socket.remoteAddress;
       if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ra) || req.headers['x-forwarded-for']) return send(res, 403, { error: 'no' });
       const b = await readBody(req);
-      const f = { id: rid(6), name: String(b.name || 'العائلة').slice(0, 40), parentToken: rid(), kids: [], created: today() };
+      const f = { id: rid(6), name: String(b.name || 'العائلة').slice(0, 40), parentToken: rid(), kids: [], created: today(), ...(b.demo ? { demo: true } : {}) };
       db.families.push(f); await save();
       return send(res, 200, `${ORIGIN}/p/${f.parentToken}\n`, 'text/plain; charset=utf-8');
     }
@@ -261,6 +263,10 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: BUNDLE, sha256_cert_fingerprints: fp } }]);
     }
     if (PAGES[p]) return serveFile(req, res, path.join(SITE, PAGES[p]), 'no-store');
+    if (p === '/api/demo' && req.method === 'GET') {   // عائلة تجريبية لمراجعي المتجرين والزوار: وصول كامل بلا حساب
+      const f = db.families.find(x => x.demo); if (!f) return send(res, 404, { error: 'no' });
+      return send(res, 200, { parent: f.parentToken, kid: (f.kids[0] || {}).token || null });
+    }
     if (await authHandler(req, res, url, p) !== false) return;
     if (p.startsWith('/api/')) return await api(req, res, url);
     let m;

@@ -26,6 +26,7 @@ const app = $('#app');
   if (kid) return location.replace('/k/' + kid);
   let cfg = { google: false, apple: false };
   try { cfg = await api('auth/config'); } catch (_) {}
+  let demo = null; try { demo = await api('demo'); } catch (_) {}
   const go = prov => () => nativeBrowser('/auth/start/' + prov + (window.NATIVE ? '?app=1' : ''));
   app.replaceChildren(el('img', { class: 'logo', src: '/icon-192.png', alt: '' }), el('h1', {}, 'ثبات'),
     el('p', { class: 'mute' }, 'عادات يومية صغيرة تثبت: آية، وكلمة، وقراءة.'),
@@ -36,7 +37,9 @@ const app = $('#app');
       !cfg.google && !cfg.apple ? el('p', { class: 'mute' }, 'الدخول بالحساب سيُفعَّل قريباً. يمكنك فتح رابط الأب الخاص بك مباشرة.') : null),
     el('div', { class: 'card', style: 'color:#17352d;text-align:right' },
       el('h2', {}, 'أنا الابن'),
-      el('p', { class: 'mute' }, 'افتح الرابط الذي أرسله لك أبوك، وسيفتح التطبيق على صفحتك مباشرة.')));
+      el('p', { class: 'mute' }, 'افتح الرابط الذي أرسله لك أبوك، وسيفتح التطبيق على صفحتك مباشرة.')),
+    demo ? el('div', { class: 'card', style: 'color:#17352d;text-align:right' }, el('h2', {}, 'تجربة التطبيق'), el('p', { class: 'mute' }, 'للمراجعين والزوار: عائلة تجريبية بوصول كامل بلا حساب.'),
+      el('button', { class: 'btn gold', onclick: () => { try { localStorage.setItem('ayah_parent', demo.parent); } catch (_) {} location.href = '/p/' + demo.parent; } }, 'جرّب التطبيق')) : null);
 })();
 </script>
 </body>
