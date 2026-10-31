@@ -91,7 +91,7 @@ function mount(ctx) {
       db.families.push(f); await save();
     } else return html(res, 403, 'الحساب غير مرتبط', '<h1>هذا الحساب غير مرتبط بعائلة</h1><p>افتح رابط الأب الخاص بك مرة واحدة ثم اضغط «ربط حسابي بـ Google/Apple». بعدها يدخلك الحساب مباشرة.</p>');
     sweep(TICKETS); const t = rid(); TICKETS.set(t, { parent: f.parentToken, exp: Date.now() + 120e3 });
-    const dest = st.app ? `ayahyoum://auth?t=${t}` : `${ORIGIN}/auth/done?t=${t}`;
+    const dest = st.app ? `thabat://auth?t=${t}` : `${ORIGIN}/auth/done?t=${t}`;
     if (!st.app) { res.writeHead(302, { Location: dest, 'Cache-Control': 'no-store' }); return res.end(); }
     // من التطبيق: نفتح التطبيق عبر المخطط، وزر احتياطي إن لم يفتح تلقائياً
     return html(res, 200, 'تم الدخول', `<h1>تم تسجيل الدخول ✅</h1><p>جارٍ فتح التطبيق…</p><a class="b" href="${dest}">افتح التطبيق</a><script>setTimeout(function(){location.href=${JSON.stringify(dest)}},300)</script>`);

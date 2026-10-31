@@ -79,11 +79,11 @@ test('هوية غير مرتبطة ترفض (التسجيل مغلق)، وحسا
   assert.equal((await login('google', { link: pt2, sub: 'shared' })).cb.status, 409);
 });
 
-test('تدفق التطبيق يعيد صفحة تفتح المخطط ayahyoum://', async () => {
+test('تدفق التطبيق يعيد صفحة تفتح المخطط thabat://', async () => {
   const pt = await newFamily();
   const { cb } = await login('google', { link: pt, app: true, sub: 'appuser' });
   assert.equal(cb.status, 200); const h = await cb.text();
-  assert.match(h, /ayahyoum:\/\/auth\?t=/);
+  assert.match(h, /thabat:\/\/auth\?t=/);
 });
 
 test('رفض: nonce خاطئ، رمز خاطئ، state مستهلك أو مجهول', async () => {
@@ -112,10 +112,10 @@ test('حذف الحساب يمسح العائلة نهائياً ويشترط ا
 
 test('الروابط العميقة والصفحات المطلوبة للمتجرين', async () => {
   const a = (await j('/.well-known/apple-app-site-association')).j;
-  assert.deepEqual(a.applinks.details[0].appIDs, ['TEAMPUB123.net.wardyat.ayahyoum']);
+  assert.deepEqual(a.applinks.details[0].appIDs, ['TEAMPUB123.net.wardyat.thabat']);
   assert.ok(JSON.stringify(a).includes('/k/*') && JSON.stringify(a).includes('/p/*'));
   const l = (await j('/.well-known/assetlinks.json')).j;
-  assert.equal(l[0].target.package_name, 'net.wardyat.ayahyoum'); assert.deepEqual(l[0].target.sha256_cert_fingerprints, ['AA:BB']);
+  assert.equal(l[0].target.package_name, 'net.wardyat.thabat'); assert.deepEqual(l[0].target.sha256_cert_fingerprints, ['AA:BB']);
   for (const p of ['/app', '/privacy', '/delete', '/auth/done']) assert.equal((await fetch(base + p)).status, 200, p);
   const cfg = (await j('/api/auth/config')).j; assert.ok(cfg.google && cfg.apple && !cfg.signup);
 });

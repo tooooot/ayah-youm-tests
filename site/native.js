@@ -13,7 +13,7 @@
   const open = raw => {
     try {
       const u = new URL(raw);
-      if (u.protocol === 'ayahyoum:') { location.href = '/auth/done?t=' + encodeURIComponent(u.searchParams.get('t') || ''); return; }
+      if (u.protocol === 'thabat:') { location.href = '/auth/done?t=' + encodeURIComponent(u.searchParams.get('t') || ''); return; }
       if (/^\/(k|p)\/[\w-]+$/.test(u.pathname) || u.pathname === '/auth/done') location.href = u.pathname + u.search;
     } catch (_) {}
   };
@@ -51,7 +51,7 @@
     const perm = await LN.requestPermissions(); if (perm.display !== 'granted') return false;
     await LN.cancel({ notifications: [{ id: 1 }] });
     const [h, m] = hhmm.split(':').map(Number);
-    await LN.schedule({ notifications: [{ id: 1, title: 'آية اليوم', body: 'حان وقت آية اليوم 🌙', schedule: { on: { hour: h, minute: m }, allowWhileIdle: true } }] });
+    await LN.schedule({ notifications: [{ id: 1, title: 'ثبات', body: 'حان وقت عاداتك اليوم 🌙', schedule: { on: { hour: h, minute: m }, allowWhileIdle: true } }] });
     try { localStorage.setItem('ayah_rem', hhmm); } catch (_) {}
     return true;
   };

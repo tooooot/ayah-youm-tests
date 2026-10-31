@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>آية اليوم</title>
+<title>ثبات</title>
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#0f3d33">
 <link rel="icon" href="/icon-192.png">
@@ -12,7 +12,7 @@
 .btn.apple{background:#000;color:#fff}.btn.google{background:#fff;color:#222}.wrap>.mute{color:#cfe3da}.card .mute{color:#5b6f66}</style>
 </head>
 <body>
-<div class="wrap" id="app"><img class="logo" src="/icon-192.png" alt=""><h1>آية اليوم</h1><p class="mute">جارٍ التحميل…</p></div>
+<div class="wrap" id="app"><img class="logo" src="/icon-192.png" alt=""><h1>ثبات</h1><p class="mute">جارٍ التحميل…</p></div>
 <script src="/common.js?v=20261101a"></script>
 <script src="/native.js?v=20261101a"></script>
 <script>
@@ -27,8 +27,8 @@ const app = $('#app');
   let cfg = { google: false, apple: false };
   try { cfg = await api('auth/config'); } catch (_) {}
   const go = prov => () => nativeBrowser('/auth/start/' + prov + (window.NATIVE ? '?app=1' : ''));
-  app.replaceChildren(el('img', { class: 'logo', src: '/icon-192.png', alt: '' }), el('h1', {}, 'آية اليوم'),
-    el('p', { class: 'mute' }, 'آية واحدة كل يوم، بتسميع وصوت ومراجعة متباعدة.'),
+  app.replaceChildren(el('img', { class: 'logo', src: '/icon-192.png', alt: '' }), el('h1', {}, 'ثبات'),
+    el('p', { class: 'mute' }, 'عادات يومية صغيرة تثبت: آية، وكلمة، وقراءة.'),
     el('div', { class: 'card', style: 'color:#17352d;text-align:right' },
       el('h2', {}, 'أنا الأب / الأم'),
       cfg.google ? el('button', { class: 'btn google', onclick: go('google') }, 'الدخول بـ Google') : null,

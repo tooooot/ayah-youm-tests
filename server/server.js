@@ -1,5 +1,5 @@
 'use strict';
-// آية اليوم — خادم بلا اعتماديات. البيانات: ملف JSON واحد + نسخ يومي.
+// ثبات (آية اليوم سابقاً) — خادم بلا اعتماديات. البيانات: ملف JSON واحد + نسخ يومي.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -11,7 +11,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const BACKUPS = path.join(DATA_DIR, 'backups');
 const PORT = +process.env.PORT || 3000;
-const ORIGIN = process.env.ORIGIN || 'https://ayah.wardyat.net';
+const ORIGIN = process.env.ORIGIN || 'https://thabat.wardyat.net';
 
 const Q = JSON.parse(fs.readFileSync(path.join(SITE, 'data', 'quran.json'), 'utf8'));
 const SURAH = Object.fromEntries(Q.map(s => [s.n, s]));
@@ -188,10 +188,10 @@ async function api(req, res, url) {
         const [hh, mm] = k.time.split(':').map(Number);
         const d = new Date(Date.UTC(2026, 0, 1, hh - 3, mm));
         const z = d.toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
-        const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ayah-youm//AR', 'BEGIN:VEVENT',
+        const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//thabat//AR', 'BEGIN:VEVENT',
           `UID:${k.id}@ayah-youm`, `DTSTAMP:${z}`, `DTSTART:${z}`, 'RRULE:FREQ=DAILY', 'DURATION:PT10M',
-          `SUMMARY:آية اليوم - ${k.name}`, `DESCRIPTION:${ORIGIN}/k/${k.token}`, `URL:${ORIGIN}/k/${k.token}`,
-          'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:آية اليوم - ${k.name}`, 'TRIGGER:PT0S', 'END:VALARM',
+          `SUMMARY:ثبات - ${k.name}`, `DESCRIPTION:${ORIGIN}/k/${k.token}`, `URL:${ORIGIN}/k/${k.token}`,
+          'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:ثبات - ${k.name}`, 'TRIGGER:PT0S', 'END:VALARM',
           'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
         return send(res, 200, ics, 'text/calendar; charset=utf-8', { 'Content-Disposition': 'attachment; filename="ayah.ics"' });
       }
@@ -237,7 +237,7 @@ async function api(req, res, url) {
 }
 
 const authHandler = require('./auth').mount({ db, save, rid, today, ORIGIN, send, readBody, famByParent });
-const TEAM = process.env.APPLE_TEAM_PUB || '823299AJGN', BUNDLE = 'net.wardyat.ayahyoum';
+const TEAM = process.env.APPLE_TEAM_PUB || '823299AJGN', BUNDLE = 'net.wardyat.thabat';
 const PAGES = { '/app': 'app.html', '/auth/done': 'auth-done.html', '/privacy': 'privacy.html', '/delete': 'delete.html' };
 
 const server = http.createServer(async (req, res) => {
@@ -269,7 +269,7 @@ const server = http.createServer(async (req, res) => {
       const kid = m[1] === 'k' ? kidByToken(m[2]) : null, fam = m[1] === 'p' ? famByParent(m[2]) : null;
       if (!kid && !fam) return send(res, 404, { error: 'no' });
       return send(res, 200, {
-        name: kid ? 'آية اليوم — ' + kid.k.name : 'آية اليوم — متابعة', short_name: kid ? kid.k.name : 'متابعة',
+        name: kid ? 'ثبات — ' + kid.k.name : 'ثبات — متابعة', short_name: kid ? kid.k.name : 'متابعة',
         start_url: `/${m[1]}/${m[2]}`, display: 'standalone', orientation: 'portrait', lang: 'ar', dir: 'rtl',
         background_color: '#0f3d33', theme_color: '#0f3d33',
         icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }],
