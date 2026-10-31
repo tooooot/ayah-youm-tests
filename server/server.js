@@ -147,7 +147,7 @@ const famByParent = t => db.families.find(f => f.parentToken === t);
 // صفحة الأب: إن فُعِّل REQUIRE_LOGIN فالعائلة المرتبطة بحساب لا يكفي رابطها؛ يلزم جلسة صادرة من دخول Google/Apple
 const REQUIRE_LOGIN = process.env.REQUIRE_LOGIN === '1';
 const shaOf = x => crypto.createHash('sha256').update(String(x)).digest('hex');
-const parentOk = (f, req) => !REQUIRE_LOGIN || !(f.owners && f.owners.length) || (!!req.headers['x-session'] && (f.sessions || []).includes(shaOf(req.headers['x-session'])));
+const parentOk = (f, req) => { if (!REQUIRE_LOGIN || !(f.guardians && f.guardians.length)) return true; const a = V2 && V2.acctOf(req); return !!a && a.role === 'guardian' && a.familyId === f.id; };
 function kidByToken(t) {
   for (const f of db.families) { const k = f.kids.find(k => k.token === t); if (k) return { f, k }; }
   return null;
@@ -160,8 +160,33 @@ const cleanKid = b => {
     reward: String(b.reward || '').trim().slice(0, 80),
     rewardDays: Math.max(3, Math.min(60, +b.rewardDays || 7)),
     time: /^\d{2}:\d{2}$/.test(b.time || '') ? b.time : '06:30',
+    habits: Array.isArray(b.habits) && b.habits.length ? b.habits.filter(h => ['ayah', 'word'].includes(h)) : ['ayah'],
+    plan: require('./points').cleanPlan(b.plan || {}),
   };
 };
+
+// تسجيل نتيجة درس: يُرجع {err:[code,msg]} أو {ok:true}
+async function submitResult(k, body) {
+      const st = kidState(k), t = today();
+      const score = Math.max(0, Math.min(1, +body.score || 0));
+      const secs = Math.max(0, Math.min(3600, Math.round(+body.secs || 0)));   // مدة الدرس الفعلية (ثوانٍ)
+      if (body.kind === 'new') {
+        // آية جديدة ثانية في اليوم مسموحة بطلب صريح (extra) وبحد 4 آيات جديدة يومياً
+        const newCount = k.log.filter(x => x.kind === 'new' && x.date === t && x.status !== 'rejected').length;
+        if ((st.newToday && !body.extra) || newCount >= 4 || !st.next || st.next.key !== body.key) return { err: [409, 'ليست آية اليوم'] };
+        let status;
+        if (body.method === 'voice') { if (score < st.threshold) return { err: [400, 'low'] }; status = 'ok'; }
+        else if (body.method === 'pending') status = 'pending';
+        else return { err: [400, 'طريقة غير صحيحة'] };
+        k.log.push({ id: rid(6), date: t, key: body.key, kind: 'new', score, method: body.method, status, secs });
+      } else if (body.kind === 'review') {
+        if (!st.reviews.some(u => u.key === body.key)) return { err: [409, 'ليست مراجعة اليوم'] };
+        const fail = body.method === 'voice' && score < st.threshold;
+        k.log.push({ id: rid(6), date: t, key: body.key, kind: 'review', score, method: body.method === 'voice' ? 'voice' : 'self', status: 'ok', fail, secs });
+      } else return { err: [400, 'نوع غير صحيح'] };
+  await save();
+  return { ok: true };
+}
 
 async function api(req, res, url) {
   const p = url.pathname.split('/').filter(Boolean); // api, parent|kid, token, ...
@@ -173,9 +198,10 @@ async function api(req, res, url) {
     if (!parentOk(f, req)) return send(res, 401, { error: 'سجّل الدخول بحسابك', login: true });
     const rest = p.slice(3);
     if (req.method === 'GET' && rest.length === 0)
-      return send(res, 200, { family: f.name, kids: f.kids.map(k => ({ ...kidState(k), token: k.token })), origin: ORIGIN, linked: (f.owners || []).length });
+      return send(res, 200, { family: f.name, kids: f.kids.map(k => ({ ...kidState(k), token: k.token })), origin: ORIGIN, linked: (f.guardians || []).length });
     if (req.method === 'DELETE' && rest[0] === 'account') {   // حذف الحساب وكل بيانات العائلة نهائياً (شرط المتجرين)
       if (body.confirm !== 'حذف') return send(res, 400, { error: 'اكتب «حذف» للتأكيد' });
+      for (const gid of f.guardians || []) { db.accounts = (db.accounts || []).filter(x => x.id !== gid); db.sessions = (db.sessions || []).filter(x => x.aid !== gid); }
       db.families = db.families.filter(x => x !== f); await save(); return send(res, 200, { ok: true });
     }
     if (req.method === 'POST' && rest[0] === 'kids' && rest.length === 1) {
@@ -217,31 +243,16 @@ async function api(req, res, url) {
     const { k } = hit;
     if (req.method === 'GET') return send(res, 200, kidState(k));
     if (req.method === 'POST' && p[3] === 'result') {
-      const st = kidState(k), t = today();
-      const score = Math.max(0, Math.min(1, +body.score || 0));
-      const secs = Math.max(0, Math.min(3600, Math.round(+body.secs || 0)));   // مدة الدرس الفعلية (ثوانٍ)
-      if (body.kind === 'new') {
-        // آية جديدة ثانية في اليوم مسموحة بطلب صريح (extra) وبحد 4 آيات جديدة يومياً
-        const newCount = k.log.filter(x => x.kind === 'new' && x.date === t && x.status !== 'rejected').length;
-        if ((st.newToday && !body.extra) || newCount >= 4 || !st.next || st.next.key !== body.key) return send(res, 409, { error: 'ليست آية اليوم' });
-        let status;
-        if (body.method === 'voice') { if (score < st.threshold) return send(res, 400, { error: 'low' }); status = 'ok'; }
-        else if (body.method === 'pending') status = 'pending';
-        else return send(res, 400, { error: 'طريقة غير صحيحة' });
-        k.log.push({ id: rid(6), date: t, key: body.key, kind: 'new', score, method: body.method, status, secs });
-      } else if (body.kind === 'review') {
-        if (!st.reviews.some(u => u.key === body.key)) return send(res, 409, { error: 'ليست مراجعة اليوم' });
-        const fail = body.method === 'voice' && score < st.threshold;
-        k.log.push({ id: rid(6), date: t, key: body.key, kind: 'review', score, method: body.method === 'voice' ? 'voice' : 'self', status: 'ok', fail, secs });
-      } else return send(res, 400, { error: 'نوع غير صحيح' });
-      await save();
+      const r = await submitResult(k, body); if (r.err) return send(res, r.err[0], { error: r.err[1] });
       return send(res, 200, kidState(k));
     }
   }
   return send(res, 404, { error: 'غير موجود' });
 }
 
-const authHandler = require('./auth').mount({ db, save, rid, today, ORIGIN, send, readBody, famByParent, shaOf, REQUIRE_LOGIN });
+var V2 = require('./v2').mount({ db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult });
+if (V2.migrate()) { try { fs.copyFileSync(DB_FILE, path.join(DATA_DIR, 'db.pre-v2.json')); } catch (_) {} save(); }
+const authHandler = require('./auth').mount({ db, save, rid, today, ORIGIN, send, readBody, famByParent, shaOf, REQUIRE_LOGIN, V2 });
 const TEAM = process.env.APPLE_TEAM_PUB || '823299AJGN', BUNDLE = 'net.wardyat.thabat';
 const PAGES = { '/app': 'app.html', '/auth/done': 'auth-done.html', '/privacy': 'privacy.html', '/delete': 'delete.html' };
 
@@ -266,6 +277,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: BUNDLE, sha256_cert_fingerprints: fp } }]);
     }
     if (PAGES[p]) return serveFile(req, res, path.join(SITE, PAGES[p]), 'no-store');
+    if (await V2.handle(req, res, url, p) !== false) return;
     if (await authHandler(req, res, url, p) !== false) return;
     if (p.startsWith('/api/')) return await api(req, res, url);
     let m;

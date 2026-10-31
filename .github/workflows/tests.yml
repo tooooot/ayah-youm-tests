@@ -10,7 +10,7 @@ jobs:
         with: { node-version: 22 }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - run: node --test tests/auth.test.js tests/enforced.test.js
+      - run: node --test tests/points.test.js tests/auth.test.js tests/enforced.test.js tests/v2.test.js
       - run: pip install playwright && playwright install --with-deps chromium
       - run: python tests/run.py
       - uses: actions/upload-artifact@v4

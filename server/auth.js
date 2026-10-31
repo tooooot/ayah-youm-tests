@@ -90,23 +90,21 @@ function mount(ctx) {
   const famOf = ident => db.families.find(f => (f.owners || []).includes(ident));
 
   async function finish(res, st, ident) {
-    let f, link = st.link ? ctx.famByParent(st.link) : null;
+    const V2 = ctx.V2, acc = V2.ensureAccount(ident), link = st.link ? ctx.famByParent(st.link) : null;
     if (st.link && !link) return html(res, 400, 'خطأ', '<h1>رابط الأب غير صحيح</h1>');
-    if (link && ctx.REQUIRE_LOGIN && (link.owners || []).length && !(link.sessions || []).includes(ctx.shaOf(st.sess || ''))) return html(res, 401, 'سجّل الدخول', '<h1>سجّل الدخول أولاً</h1><p>لإضافة حساب آخر لهذه العائلة ادخل بحسابك المرتبط أولاً.</p>');
-    const mine = famOf(ident);
-    if (link) {
+    if (link) {   // نقل عائلة قديمة (رابط الأب) إلى هذا الحساب: مرة واحدة لكل حساب
+      const mine = V2.famOf(acc);
       if (mine && mine !== link) return html(res, 409, 'الحساب مرتبط', '<h1>هذا الحساب مرتبط بعائلة أخرى</h1><p>لا يمكن ربطه بهذه العائلة.</p>');
-      link.owners = link.owners || []; if (!link.owners.includes(ident)) link.owners.push(ident);
-      await save(); f = link;
-    } else if (mine) f = mine;
-    else if (process.env.ALLOW_SIGNUP === '1') {
-      f = { id: ctx.rid(6), name: 'عائلتي', parentToken: ctx.rid(), kids: [], created: ctx.today(), owners: [ident] };
-      db.families.push(f); await save();
-    } else return html(res, 403, 'الحساب غير مرتبط', '<h1>هذا الحساب غير مرتبط بعائلة</h1><p>افتح رابط الأب الخاص بك مرة واحدة ثم اضغط «ربط حسابي بـ Google/Apple». بعدها يدخلك الحساب مباشرة.</p>');
-    sweep(TICKETS); const t = rid(); TICKETS.set(t, { parent: f.parentToken, exp: Date.now() + 120e3 });
+      if (acc.role === 'student') return html(res, 409, 'حساب ابن', '<h1>هذا حساب ابن</h1><p>لا يمكن جعله وصياً على عائلة.</p>');
+      const known = (link.guardians || []).length > 0 && !link.guardians.includes(acc.id);
+      if (known && ctx.REQUIRE_LOGIN) { const s = V2.acctOf({ headers: { 'x-session': st.sess || '' } }); if (!s || s.familyId !== link.id) return html(res, 401, 'سجّل الدخول', '<h1>سجّل الدخول أولاً</h1><p>لإضافة حساب آخر لهذه العائلة ادخل بحسابك المرتبط أولاً.</p>'); }
+      acc.role = 'guardian'; acc.familyId = link.id; link.guardians = link.guardians || [];
+      if (!link.guardians.includes(acc.id)) link.guardians.push(acc.id);
+    }
+    await save();
+    sweep(TICKETS); const t = rid(); TICKETS.set(t, { aid: acc.id, exp: Date.now() + 120e3 });
     const dest = st.app ? `thabat://auth?t=${t}` : `${ORIGIN}/auth/done?t=${t}`;
     if (!st.app) { res.writeHead(302, { Location: dest, 'Cache-Control': 'no-store' }); return res.end(); }
-    // من التطبيق: نفتح التطبيق عبر المخطط، وزر احتياطي إن لم يفتح تلقائياً
     return html(res, 200, 'تم الدخول', `<h1>تم تسجيل الدخول ✅</h1><p>جارٍ فتح التطبيق…</p><a class="b" href="${dest}">افتح التطبيق</a><script>setTimeout(function(){location.href=${JSON.stringify(dest)}},300)</script>`);
   }
 
@@ -140,9 +138,10 @@ function mount(ctx) {
     if (p === '/api/auth/redeem' && req.method === 'POST') {
       const b = await ctx.readBody(req), t = TICKETS.get(String(b.t || '')); TICKETS.delete(String(b.t || ''));
       if (!t || t.exp < Date.now()) return send(res, 400, { error: 'انتهت صلاحية الدخول' });
-      const f = ctx.famByParent(t.parent); if (!f) return send(res, 400, { error: 'العائلة غير موجودة' });
-      const session = rid(24); f.sessions = [...(f.sessions || []).slice(-9), ctx.shaOf(session)]; await save();
-      return send(res, 200, { parent: t.parent, session });
+      const acc = ctx.V2.acctById(t.aid); if (!acc) return send(res, 400, { error: 'الحساب غير موجود' });
+      const session = ctx.V2.newSession(acc); await save();
+      const f = ctx.V2.famOf(acc);
+      return send(res, 200, { session, role: acc.role, ...(f ? { parent: f.parentToken } : {}) });
     }
     if (p === '/api/auth/reviewer' && req.method === 'POST') {
       if (!REV) return send(res, 404, { error: 'غير متاح' });
@@ -153,14 +152,22 @@ function mount(ctx) {
       if (!revCheck(b.user, b.pass)) { fl.push(now); return send(res, 401, { error: 'بيانات غير صحيحة' }); }
       let f = db.families.find(x => x.reviewer);
       if (!f) {
-        f = { id: ctx.rid(6), name: 'مراجعة المتاجر', parentToken: ctx.rid(), kids: [], created: ctx.today(), reviewer: true };
-        f.kids.push({ id: ctx.rid(6), token: ctx.rid(), name: 'ولد المراجعة', age: 10, start: 67, reward: 'نزهة', rewardDays: 7, time: '06:30', rewardSince: null, log: [], created: ctx.today() });
+        f = { id: ctx.rid(6), name: 'عائلتي', parentToken: ctx.rid(), kids: [], created: ctx.today(), reviewer: true, guardians: [] };
+        f.kids.push({ id: ctx.rid(6), token: ctx.rid(), name: 'ولدي', age: 10, start: 67, reward: '', rewardDays: 7, time: '06:30', rewardSince: null, log: [], created: ctx.today(), habits: ['ayah'], plan: { mode: 'allowance', amount: 300, cycleDay: 1, restWeekday: 5, extraRestDays: 2, showMoney: true, weights: {} }, invite: { token: ctx.rid(), created: ctx.today(), claimedBy: null, claimedAt: null } });
         db.families.push(f);
       }
-      const session = rid(24); f.sessions = [...(f.sessions || []).slice(-9), ctx.shaOf(session)]; await save();
-      return send(res, 200, { parent: f.parentToken, session });
+      const V2 = ctx.V2, kid = f.kids[0];
+      const g = V2.ensureAccount('reviewer:guardian'); g.role = 'guardian'; g.familyId = f.id; if (!f.guardians.includes(g.id)) f.guardians.push(g.id);
+      let acc = g;
+      if (b.role === 'student') {   // مراجع يريد تجربة جهة الابن
+        acc = V2.ensureAccount('reviewer:student'); acc.role = 'student';
+        if (!acc.profiles.some(pf => pf.kidId === kid.id)) acc.profiles.push({ kidId: kid.id });
+        kid.invite = kid.invite || { token: ctx.rid(), created: ctx.today(), claimedBy: null, claimedAt: null }; kid.invite.claimedBy = acc.id;
+      }
+      const session = V2.newSession(acc); await save();
+      return send(res, 200, { session, role: acc.role, parent: f.parentToken });
     }
-    if (p === '/api/auth/config' && req.method === 'GET') return send(res, 200, { google: configured('google'), apple: configured('apple'), signup: process.env.ALLOW_SIGNUP === '1', reviewer: !!REV });
+    if (p === '/api/auth/config' && req.method === 'GET') return send(res, 200, { google: configured('google'), apple: configured('apple'), signup: true, reviewer: !!REV });
     return false;
   };
 }
