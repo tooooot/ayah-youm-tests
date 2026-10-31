@@ -34,6 +34,18 @@ function appleSecret() {   // client_secret لـ Apple: JWT بتوقيع ES256 �
   return head + '.' + body + '.' + b64u(sig);
 }
 
+// حساب المراجعين الموحّد لكل تطبيقاتنا (استثناء صريح من المالك: بلا Google لتفادي فشل التحقق الثنائي عند المراجعة).
+// يُقرأ من DATA_DIR/reviewer.json = { user, salt, hash } (scrypt)؛ كلمة السر لا تُخزَّن نصاً.
+const path = require('path');
+let REV = null;
+try { REV = JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'reviewer.json'), 'utf8')); } catch (_) {}
+const FAILS = new Map();   // ip -> [أوقات الفشل]
+const revCheck = (user, pass) => {
+  if (!REV || typeof user !== 'string' || typeof pass !== 'string' || pass.length > 200) return false;
+  const h = crypto.scryptSync(pass, REV.salt, 32), want = Buffer.from(REV.hash, 'hex');
+  return crypto.timingSafeEqual(h, want) && user.trim().toLowerCase() === REV.user.toLowerCase();
+};
+
 const jwksCache = {};
 async function jwk(url, kid) {
   const c = jwksCache[url];
@@ -132,7 +144,23 @@ function mount(ctx) {
       const session = rid(24); f.sessions = [...(f.sessions || []).slice(-9), ctx.shaOf(session)]; await save();
       return send(res, 200, { parent: t.parent, session });
     }
-    if (p === '/api/auth/config' && req.method === 'GET') return send(res, 200, { google: configured('google'), apple: configured('apple'), signup: process.env.ALLOW_SIGNUP === '1' });
+    if (p === '/api/auth/reviewer' && req.method === 'POST') {
+      if (!REV) return send(res, 404, { error: 'غير متاح' });
+      const ip = String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress).split(',')[0].trim(), now = Date.now();
+      const fl = (FAILS.get(ip) || []).filter(t => now - t < 600e3); FAILS.set(ip, fl); if (FAILS.size > 5000) FAILS.clear();
+      if (fl.length >= 5) return send(res, 429, { error: 'محاولات كثيرة، حاول لاحقاً' });
+      const b = await ctx.readBody(req);
+      if (!revCheck(b.user, b.pass)) { fl.push(now); return send(res, 401, { error: 'بيانات غير صحيحة' }); }
+      let f = db.families.find(x => x.reviewer);
+      if (!f) {
+        f = { id: ctx.rid(6), name: 'مراجعة المتاجر', parentToken: ctx.rid(), kids: [], created: ctx.today(), reviewer: true };
+        f.kids.push({ id: ctx.rid(6), token: ctx.rid(), name: 'ولد المراجعة', age: 10, start: 67, reward: 'نزهة', rewardDays: 7, time: '06:30', rewardSince: null, log: [], created: ctx.today() });
+        db.families.push(f);
+      }
+      const session = rid(24); f.sessions = [...(f.sessions || []).slice(-9), ctx.shaOf(session)]; await save();
+      return send(res, 200, { parent: f.parentToken, session });
+    }
+    if (p === '/api/auth/config' && req.method === 'GET') return send(res, 200, { google: configured('google'), apple: configured('apple'), signup: process.env.ALLOW_SIGNUP === '1', reviewer: !!REV });
     return false;
   };
 }

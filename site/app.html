@@ -17,6 +17,14 @@
 <script src="/native.js?v=20261101b"></script>
 <script>
 const app = $('#app');
+function reviewerBox() {   // دخول مراجعي المتاجر (حساب موحّد لكل تطبيقاتنا)
+  const u = el('input', { placeholder: 'اسم المستخدم', autocomplete: 'username', dir: 'ltr' }), p = el('input', { type: 'password', placeholder: 'كلمة المرور', autocomplete: 'current-password', dir: 'ltr' }), m = el('div', { class: 'mute' });
+  const f = el('div', { hidden: true }, u, p, el('button', { class: 'btn ghost', onclick: async () => {
+    try { const r = await api('auth/reviewer', 'POST', { user: u.value, pass: p.value }); localStorage.setItem('ayah_parent', r.parent); localStorage.setItem('ayah_session', r.session); location.replace('/p/' + r.parent); }
+    catch (e) { m.textContent = e.message; }
+  } }, 'دخول'), m);
+  return el('div', { style: 'text-align:center;margin-top:18px' }, el('a', { href: '#', style: 'color:#cfe3da;font-size:.9rem', onclick: ev => { ev.preventDefault(); f.hidden = !f.hidden; } }, 'دخول المراجعين (للمتاجر)'), f);
+}
 (async () => {
   const q = new URLSearchParams(location.search);
   try { if (q.get('reset')) { localStorage.removeItem('ayah_kid'); localStorage.removeItem('ayah_parent'); } } catch (_) {}
@@ -36,7 +44,8 @@ const app = $('#app');
       !cfg.google && !cfg.apple ? el('p', { class: 'mute' }, 'الدخول بالحساب سيُفعَّل قريباً. يمكنك فتح رابط الأب الخاص بك مباشرة.') : null),
     el('div', { class: 'card', style: 'color:#17352d;text-align:right' },
       el('h2', {}, 'أنا الابن'),
-      el('p', { class: 'mute' }, 'افتح الرابط الذي أرسله لك أبوك، وسيفتح التطبيق على صفحتك مباشرة.')));
+      el('p', { class: 'mute' }, 'افتح الرابط الذي أرسله لك أبوك، وسيفتح التطبيق على صفحتك مباشرة.')),
+    cfg.reviewer ? reviewerBox() : null);
 })();
 </script>
 </body>

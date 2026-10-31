@@ -35,6 +35,7 @@ before(async () => {
   const pp = await listen(prov), P = 'http://127.0.0.1:' + pp;
   const sp = await new Promise(r => { const s = http.createServer(); s.listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
   base = 'http://127.0.0.1:' + sp; dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ayah-'));
+  { const salt = 'abcd1234'; fs.writeFileSync(path.join(dir, 'reviewer.json'), JSON.stringify({ user: 'rev@test.net', salt, hash: crypto.scryptSync('rev-pass-123', salt, 32).toString('hex') })); }
   const p8 = ec.privateKey.export({ type: 'pkcs8', format: 'pem' });
   child = spawn('node', [path.join(ROOT, 'server/server.js')], { env: { ...process.env, PORT: sp, DATA_DIR: dir, ORIGIN: base,
     GOOGLE_CLIENT_ID: 'gid', GOOGLE_CLIENT_SECRET: 'gsec', GOOGLE_TOKEN_URL: P + '/token', GOOGLE_JWKS_URL: P + '/jwks', GOOGLE_AUTH_URL: P + '/auth',
@@ -118,4 +119,15 @@ test('الروابط العميقة والصفحات المطلوبة للمتج
   assert.equal(l[0].target.package_name, 'net.wardyat.thabat'); assert.deepEqual(l[0].target.sha256_cert_fingerprints, ['AA:BB']);
   for (const p of ['/app', '/privacy', '/delete', '/auth/done']) assert.equal((await fetch(base + p)).status, 200, p);
   const cfg = (await j('/api/auth/config')).j; assert.ok(cfg.google && cfg.apple && !cfg.signup);
+});
+
+test('حساب المراجعين الموحّد: دخول صحيح، رفض الخطأ، حدّ المحاولات، عائلة ثابتة', async () => {
+  const post = body => j('/api/auth/reviewer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  assert.equal((await j('/api/auth/config')).j.reviewer, true);
+  const a = await post({ user: 'REV@test.net', pass: 'rev-pass-123' }); assert.equal(a.r.status, 200); assert.ok(a.j.parent && a.j.session);
+  const b = await post({ user: 'rev@test.net', pass: 'rev-pass-123' }); assert.equal(b.j.parent, a.j.parent, 'العائلة نفسها كل مرة');
+  const fam = (await j('/api/parent/' + a.j.parent)).j; assert.equal(fam.kids.length, 1, 'ولد جاهز للمراجع');
+  // الفشل: 5 محاولات ثم 429 حتى مع كلمة صحيحة
+  for (let i = 0; i < 5; i++) assert.equal((await post({ user: 'rev@test.net', pass: 'wrong' + i })).r.status, 401);
+  assert.equal((await post({ user: 'rev@test.net', pass: 'rev-pass-123' })).r.status, 429);
 });
