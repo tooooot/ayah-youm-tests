@@ -6,14 +6,14 @@
 <link rel="stylesheet" href="/app.css">
 </head>
 <body><div class="wrap"><div class="card"><h2 id="m">جارٍ تسجيل الدخول…</h2></div></div>
-<script src="/common.js?v=20261101g"></script>
+<script src="/common.js?v=20261101h"></script>
 <script src="/native.js?v=20261101b"></script>
 <script>
 (async () => {
   const t = new URLSearchParams(location.search).get('t');
   try {
     const r = await api('auth/redeem', 'POST', { t });
-    try { localStorage.setItem('ayah_parent', r.parent); localStorage.setItem('ayah_session', r.session || ''); } catch (_) {}
+    try { localStorage.setItem('ayah_session', r.session || ''); } catch (_) {}
     if (window.closeNativeBrowser) closeNativeBrowser();
     location.replace('/app');
   } catch (e) { $('#m').textContent = e.message || 'تعذّر الدخول'; }

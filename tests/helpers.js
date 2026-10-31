@@ -40,9 +40,9 @@ async function startEnv({ env = {}, files = {} } = {}) {
   const jj = { 'content-type': 'application/json' };
   // طلب مع جلسة
   const call = (sess, method, p, body) => j(p, { method, headers: { ...jj, ...(sess ? { 'x-session': sess } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
-  async function login(prov_, { link, app, code = 'ok', sub = S.sub, sess } = {}) {
+  async function login(prov_, { app, code = 'ok', sub = S.sub } = {}) {
     S.sub = sub; S.aud = prov_ === 'google' ? 'gid' : 'net.test.svc'; S.iss = prov_ === 'google' ? 'https://accounts.google.com' : 'https://appleid.apple.com';
-    const q = new URLSearchParams(); if (sess) q.set('s', sess); if (link) q.set('link', link); if (app) q.set('app', '1');
+    const q = new URLSearchParams(); if (app) q.set('app', '1');
     const s = await fetch(base + `/auth/start/${prov_}?` + q, { redirect: 'manual' });
     assert.equal(s.status, 302); const loc = new URL(s.headers.get('location')); S.nonce = loc.searchParams.get('nonce'); const state = loc.searchParams.get('state');
     assert.equal(loc.searchParams.get('client_id'), S.aud);
@@ -55,8 +55,7 @@ async function startEnv({ env = {}, files = {} } = {}) {
   const redeem = t => j('/api/auth/redeem', { method: 'POST', headers: jj, body: JSON.stringify({ t }) });
   // دخول كامل بهوية → جلسة
   const signIn = async (sub, opts = {}) => { const { cb } = await login('google', { sub, ...opts }); assert.equal(cb.status, 302, 'login ' + sub); const r = await redeem(ticket(cb)); assert.equal(r.r.status, 200); return r.j; };
-  const newFamily = async () => (await (await fetch(base + '/admin/new-family', { method: 'POST', body: '{}', headers: jj })).text()).trim().split('/p/')[1];
   const stop = () => { child.kill(); prov.close(); };
-  return { base, dir, S, j, call, login, ticket, redeem, signIn, newFamily, stop, ec, getSecret: () => S.lastSecret };
+  return { base, dir, S, j, call, login, ticket, redeem, signIn, stop, ec, getSecret: () => S.lastSecret };
 }
 module.exports = { startEnv, ROOT };

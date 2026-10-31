@@ -7,7 +7,7 @@ const el = (tag, attrs = {}, ...kids) => {
     if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
     else if (v !== false && v != null) e.setAttribute(k, v);
   }
-  kids.flat().forEach(c => { if (c != null && c !== false) e.append(c instanceof Node ? c : document.createTextNode(c)); });
+  kids.flat(Infinity).forEach(c => { if (c != null && c !== false) e.append(c instanceof Node ? c : document.createTextNode(c)); });
   return e;
 };
 async function api(path, method = 'GET', body) {

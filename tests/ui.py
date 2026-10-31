@@ -52,11 +52,13 @@ try:
         st0 = get(f'/api/v2/kids/{kid["id"]}/state', gs); check('المكافأة حُفظت (مصروف 300)', st0['points']['mode'] == 'allowance' and st0['points']['amount'] == 300, st0['points'])
         pg.get_by_text('إنهاء، إلى الرئيسية').click(); pg.wait_for_selector('.tabbar', timeout=10000)
         tabs = pg.locator('.tabbar .tab'); check('الأب: خمسة تبويبات في الشريط السفلي', tabs.count() == 5, tabs.count())
+        check('الرئيسية: قائمة «ابدأ في 5 دقائق» لأب جديد', 'ابدأ في 5 دقائق' in pg.inner_text('body'));
         check('الرئيسية: بطاقة الولد', pg.locator('.card:has-text("سلمان")').count() >= 1); noscroll(pg, 'رئيسية الأب'); pg.screenshot(path=OUT + '/06_guardian_home.png')
         for label, key in (('الأولاد', '07_kids'), ('العادات', '08_habits'), ('التقدّم', '09_progress'), ('البروفايل', '10_profile')):
             pg.locator('.tabbar .tab', has_text=label).click(); pg.wait_for_selector('.hdr h1'); pg.wait_for_timeout(500)
             check(f'تبويب {label} يعرض عنوانه', label in pg.inner_text('.hdr h1')); noscroll(pg, f'تبويب {label}'); pg.screenshot(path=OUT + f'/{key}.png')
-        pg.close()
+        pg.locator('.tabbar .tab', has_text='البروفايل').click(); pg.get_by_text('دليل الأب').click(); pg.wait_for_selector('.card.tap'); check('دليل الأب: سبع بطاقات', pg.locator('.card.tap').count() == 7, pg.locator('.card.tap').count()); pg.screenshot(path=OUT + '/10b_guide.png')
+        pg.locator('.card.tap').first.click(); pg.wait_for_selector('ol li'); check('بطاقة الدليل تعرض خطواتها', pg.locator('ol li').count() >= 4); pg.close()
         # ٣. صفحة الولد والمكافأة
         pg = page(gs); pg.goto(B + f'/app#/kid/{kid["id"]}'); pg.wait_for_selector('.seg'); pg.wait_for_timeout(600)
         pg.get_by_role('button', name='المصروف').click(); pg.fill('input[aria-label="المبلغ"]', '300'); pg.wait_for_timeout(300)
@@ -99,6 +101,7 @@ try:
         check('الجلسة معلّقة بلا نقاط، والسبب يصل للأب، ومعها تسجيل', len(st4['pending']) == 1 and st4['pending'][0]['why'] == 'unsupported' and st4['pending'][0]['hasRec'] and st4['points']['pointsToday'] == 0, st4['pending'])
         pg2 = page(gs); pg2.goto(B + '/app'); pg2.wait_for_selector('.tabbar'); pg2.wait_for_timeout(600)
         check('الأب يرى: «تسميع ينتظر تأكيدك» مع سبب ويُطلب منه ألا يؤكد إلا إن سمعه', 'ينتظر تأكيدك' in pg2.inner_text('body') and 'جهازه لا يدعم' in pg2.inner_text('body') and 'سمعتُه وصحّ' in pg2.inner_text('body'))
+        check('الأب يرى خيار «نقل» إلى ولد آخر', pg2.locator('select[aria-label="نقل إلى"]').count() == 1)
         pg2.get_by_text('استمع لتسميعه').click(); pg2.wait_for_selector('audio', timeout=10000); check('الأب يسمع التسجيل المؤقت', pg2.evaluate("fetch('/api/v2/kids/%s/sessions/%s/recording',{headers:{'X-Session':localStorage.getItem('ayah_session')}}).then(r=>r.status)" % (k4['id'], st4['pending'][0]['sid'])) == 200)
         pg2.screenshot(path=OUT + '/18_pending_confirm.png'); pg2.get_by_text('سمعتُه وصحّ').first.click(); pg2.wait_for_timeout(1200)
         st4 = get(f'/api/v2/kids/{k4["id"]}/state', gs); check('بعد تأكيد الأب: 100 نقطة اليوم', st4['points']['pointsToday'] == 100 and not st4['pending'], st4['points']['pointsToday'])

@@ -169,15 +169,6 @@ function serveFile(req, res, file, cache) {
   });
 }
 
-const famByParent = t => db.families.find(f => f.parentToken === t);
-// صفحة الأب: إن فُعِّل REQUIRE_LOGIN فالعائلة المرتبطة بحساب لا يكفي رابطها؛ يلزم جلسة صادرة من دخول Google/Apple
-const REQUIRE_LOGIN = process.env.REQUIRE_LOGIN === '1';
-const shaOf = x => crypto.createHash('sha256').update(String(x)).digest('hex');
-const parentOk = (f, req) => { if (!REQUIRE_LOGIN || !(f.guardians && f.guardians.length)) return true; const a = V2 && V2.acctOf(req); return !!a && a.role === 'guardian' && a.familyId === f.id; };
-function kidByToken(t) {
-  for (const f of db.families) { const k = f.kids.find(k => k.token === t); if (k) return { f, k }; }
-  return null;
-}
 const cleanKid = b => {
   const age = Math.max(4, Math.min(18, +b.age || 8));
   const start = STARTS.includes(+b.start) ? +b.start : (age >= 10 ? 67 : 114);
@@ -216,72 +207,9 @@ async function submitResult(k, body) {
   return { ok: true };
 }
 
-async function api(req, res, url) {
-  const p = url.pathname.split('/').filter(Boolean); // api, parent|kid, token, ...
-  const body = req.method === 'GET' ? {} : await readBody(req);
-
-  if (p[1] === 'parent') {
-    const f = famByParent(p[2]);
-    if (!f) return send(res, 404, { error: 'رابط غير صحيح' });
-    if (!parentOk(f, req)) return send(res, 401, { error: 'سجّل الدخول بحسابك', login: true });
-    const rest = p.slice(3);
-    if (req.method === 'GET' && rest.length === 0)
-      return send(res, 200, { family: f.name, kids: f.kids.map(k => ({ ...kidState(k), token: k.token })), origin: ORIGIN, linked: (f.guardians || []).length });
-    if (req.method === 'DELETE' && rest[0] === 'account') {   // حذف الحساب وكل بيانات العائلة نهائياً (شرط المتجرين)
-      if (body.confirm !== 'حذف') return send(res, 400, { error: 'اكتب «حذف» للتأكيد' });
-      snapshot('family'); f.kids.forEach(dropKidRelays);
-      for (const gid of f.guardians || []) { db.accounts = (db.accounts || []).filter(x => x.id !== gid); db.sessions = (db.sessions || []).filter(x => x.aid !== gid); }
-      db.families = db.families.filter(x => x !== f); await save(); return send(res, 200, { ok: true });
-    }
-    if (req.method === 'POST' && rest[0] === 'kids' && rest.length === 1) {
-      const c = cleanKid(body); if (!c.name) return send(res, 400, { error: 'الاسم مطلوب' });
-      if (f.kids.length >= 8) return send(res, 400, { error: 'حد الأولاد 8' });
-      f.kids.push({ id: rid(6), token: rid(), ...c, rewardSince: null, log: [], created: today() });
-      await save(); return send(res, 200, { ok: true });
-    }
-    const k = f.kids.find(x => x.id === rest[1]);
-    if (rest[0] === 'kids' && k) {
-      if (req.method === 'PUT') { Object.assign(k, cleanKid({ ...k, ...body })); await save(); return send(res, 200, { ok: true }); }
-      if (req.method === 'DELETE') { snapshot('kid'); dropKidRelays(k); f.kids = f.kids.filter(x => x !== k); await save(); return send(res, 200, { ok: true }); }
-      if (req.method === 'POST' && rest[2] === 'reward-given') { k.rewardSince = today(); await save(); return send(res, 200, { ok: true }); }
-      if (req.method === 'GET' && rest[2] === 'ics') {
-        const [hh, mm] = k.time.split(':').map(Number);
-        const d = new Date(Date.UTC(2026, 0, 1, hh - 3, mm));
-        const z = d.toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
-        const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//thabat//AR', 'BEGIN:VEVENT',
-          `UID:${k.id}@ayah-youm`, `DTSTAMP:${z}`, `DTSTART:${z}`, 'RRULE:FREQ=DAILY', 'DURATION:PT10M',
-          `SUMMARY:ثبات - ${k.name}`, `DESCRIPTION:${ORIGIN}/k/${k.token}`, `URL:${ORIGIN}/k/${k.token}`,
-          'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:ثبات - ${k.name}`, 'TRIGGER:PT0S', 'END:VALARM',
-          'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
-        return send(res, 200, ics, 'text/calendar; charset=utf-8', { 'Content-Disposition': 'attachment; filename="ayah.ics"' });
-      }
-    }
-    if (req.method === 'POST' && rest[0] === 'confirm') {
-      for (const kk of f.kids) {
-        const s = kk.log.find(x => x.id === body.sid && x.status === 'pending');
-        if (s) { s.status = body.ok ? 'ok' : 'rejected'; if (s.rec) dropRelay(s.rec); await save(); return send(res, 200, { ok: true }); }
-      }
-      return send(res, 404, { error: 'غير موجود' });
-    }
-    return send(res, 404, { error: 'غير موجود' });
-  }
-
-  if (p[1] === 'kid') {
-    const hit = kidByToken(p[2]);
-    if (!hit) return send(res, 404, { error: 'رابط غير صحيح' });
-    const { k } = hit;
-    if (req.method === 'GET') return send(res, 200, kidState(k));
-    if (req.method === 'POST' && p[3] === 'result') {
-      const r = await submitResult(k, body); if (r.err) return send(res, r.err[0], { error: r.err[1] });
-      return send(res, 200, kidState(k));
-    }
-  }
-  return send(res, 404, { error: 'غير موجود' });
-}
-
 var V2 = require('./v2').mount({ db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR });
 if (V2.migrate()) { try { fs.copyFileSync(DB_FILE, path.join(DATA_DIR, 'db.pre-v2.json')); } catch (_) {} save(); }
-const authHandler = require('./auth').mount({ db, save, rid, today, ORIGIN, send, readBody, famByParent, shaOf, REQUIRE_LOGIN, V2 });
+const authHandler = require('./auth').mount({ db, save, rid, today, ORIGIN, send, readBody, V2 });
 const TEAM = process.env.APPLE_TEAM_PUB || '823299AJGN', BUNDLE = 'net.wardyat.thabat';
 const PAGES = { '/app': 'app.html', '/auth/done': 'auth-done.html', '/privacy': 'privacy.html', '/delete': 'delete.html' };
 
@@ -290,17 +218,9 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     const p = decodeURIComponent(url.pathname);
     if (p === '/healthz') return send(res, 200, { ok: true });
-    if (p === '/admin/new-family' && req.method === 'POST') {
-      const ra = req.socket.remoteAddress;
-      if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ra) || req.headers['x-forwarded-for']) return send(res, 403, { error: 'no' });
-      const b = await readBody(req);
-      const f = { id: rid(6), name: String(b.name || 'العائلة').slice(0, 40), parentToken: rid(), kids: [], created: today() };
-      db.families.push(f); await save();
-      return send(res, 200, `${ORIGIN}/p/${f.parentToken}\n`, 'text/plain; charset=utf-8');
-    }
     // الروابط العميقة: iOS Universal Links وAndroid App Links (بصمة التوقيع من البيئة)
     if (p === '/.well-known/apple-app-site-association')
-      return send(res, 200, { applinks: { details: [{ appIDs: [`${TEAM}.${BUNDLE}`], components: [{ '/': '/i/*' }, { '/': '/k/*' }, { '/': '/p/*' }] }] } });
+      return send(res, 200, { applinks: { details: [{ appIDs: [`${TEAM}.${BUNDLE}`], components: [{ '/': '/i/*' }] }] } });
     if (p === '/.well-known/assetlinks.json') {
       const fp = (process.env.ANDROID_SHA256 || '').split(',').map(x => x.trim()).filter(Boolean);
       return send(res, 200, [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: BUNDLE, sha256_cert_fingerprints: fp } }]);
@@ -308,21 +228,11 @@ const server = http.createServer(async (req, res) => {
     if (PAGES[p]) return serveFile(req, res, path.join(SITE, PAGES[p]), 'no-store');
     if (await V2.handle(req, res, url, p) !== false) return;
     if (await authHandler(req, res, url, p) !== false) return;
-    if (p.startsWith('/api/')) return await api(req, res, url);
+    if (p.startsWith('/api/')) return send(res, 404, { error: 'غير موجود' });
     let m;
     if (/^\/i\/[\w-]+$/.test(p)) return serveFile(req, res, path.join(SITE, 'app.html'), 'no-store');   // دعوة ابن: التطبيق الجديد يعالجها
+    if (p === '/manifest.webmanifest') return send(res, 200, { name: 'ثبات', short_name: 'ثبات', start_url: '/app', display: 'standalone', orientation: 'portrait', lang: 'ar', dir: 'rtl', background_color: '#0f3d33', theme_color: '#0f3d33', icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] }, 'application/manifest+json');
     if (/^\/lesson\/[\w-]+$/.test(p)) return serveFile(req, res, path.join(SITE, 'kid.html'), 'no-store');   // شاشة الدرس بجلسة الحساب
-    if ((m = /^\/(p|k)\/([\w-]+)$/.exec(p))) return serveFile(req, res, path.join(SITE, m[1] === 'p' ? 'parent.html' : 'kid.html'), 'no-store');
-    if ((m = /^\/manifest\/(p|k)\/([\w-]+)\.json$/.exec(p))) {
-      const kid = m[1] === 'k' ? kidByToken(m[2]) : null, fam = m[1] === 'p' ? famByParent(m[2]) : null;
-      if (!kid && !fam) return send(res, 404, { error: 'no' });
-      return send(res, 200, {
-        name: kid ? 'ثبات — ' + kid.k.name : 'ثبات — متابعة', short_name: kid ? kid.k.name : 'متابعة',
-        start_url: `/${m[1]}/${m[2]}`, display: 'standalone', orientation: 'portrait', lang: 'ar', dir: 'rtl',
-        background_color: '#0f3d33', theme_color: '#0f3d33',
-        icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }],
-      }, 'application/manifest+json');
-    }
     const rel = p === '/' ? '/index.html' : p;
     const file = path.normalize(path.join(SITE, rel));
     if (!file.startsWith(SITE + path.sep)) return send(res, 403, { error: 'no' });
@@ -337,14 +247,4 @@ const server = http.createServer(async (req, res) => {
 backup(); setInterval(backup, 6 * 3600e3);
 purgeRelays(); setInterval(purgeRelays, +process.env.RELAY_PURGE_MS || 3600e3);
 
-if (require.main === module) {
-  if (process.argv[2] === 'new-family') {
-    // أمر إداري: يمرّ عبر الخادم العامل (نقطة محلية) كي لا يكتب على الملف من وراء ذاكرته
-    const body = JSON.stringify({ name: process.argv[3] || 'العائلة' });
-    const r = http.request({ host: '127.0.0.1', port: PORT, path: '/admin/new-family', method: 'POST', headers: { 'Content-Type': 'application/json' } },
-      resp => { let b = ''; resp.on('data', c => b += c); resp.on('end', () => { console.log(b); process.exit(0); }); });
-    r.on('error', e => { console.error(e.message); process.exit(1); });
-    r.end(body);
-  } else server.listen(PORT, () => console.log('ayah-youm on', PORT));
-}
-module.exports = { kidState, queue };
+if (require.main === module) server.listen(PORT, () => console.log('thabat on', PORT));

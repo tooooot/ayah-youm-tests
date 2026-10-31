@@ -9,6 +9,12 @@ const HABITS = ['ayah', 'word'];
 function mount(ctx) {
   const { db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR } = ctx;
   const fs = require('fs'), path = require('path');
+  // عقد التكامل مع وحدات العادات (كلماتي): رمز موقّع قصير العمر بلا حسابات هناك، وأحداث إنجاز موقّعة تصل لسجل ثبات
+  const SECRET_FILE = path.join(path.dirname(RELAY_DIR), 'habit_secret');
+  let HSECRET = ''; try { HSECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim(); } catch (_) {}
+  if (!HSECRET) { HSECRET = crypto.randomBytes(32).toString('hex'); try { fs.writeFileSync(SECRET_FILE, HSECRET, { mode: 0o600 }); } catch (_) {} }
+  const hmac = s => crypto.createHmac('sha256', HSECRET).update(s).digest();
+  const mkToken = o => { const p = Buffer.from(JSON.stringify(o)).toString('base64url'); return p + '.' + hmac(p).toString('base64url'); };
   const readRaw = (req, max) => new Promise(res => { const ch = []; let n = 0; req.on('data', c => { n += c.length; if (n <= max) ch.push(c); }); req.on('end', () => res(n > max ? null : Buffer.concat(ch))); req.on('error', () => res(null)); });
   db.accounts = db.accounts || []; db.sessions = db.sessions || [];
 
@@ -65,7 +71,7 @@ function mount(ctx) {
     if (withInvite) { v.invite = { status: inviteStatus(k), url: k.invite ? `${ORIGIN}/i/${k.invite.token}` : null }; }
     return v;
   }
-  const famBrief = f => ({ id: f.id, name: f.name, hasPin: !!f.pinHash });
+  const famBrief = f => ({ id: f.id, name: f.name });
   const onboarding = a => {
     if (!a.role) return 'family';   // لا اختيار دور: من يدخل بلا دعوة يبدأ رحلة الأب/الأم
     if (a.role === 'guardian') { const f = famOf(a); return !f ? 'family' : f.kids.length ? null : 'kid'; }
@@ -83,6 +89,18 @@ function mount(ctx) {
     if (seg[0] === 'invites' && seg[1] && m === 'GET') {
       for (const f of db.families) { const k = f.kids.find(x => x.invite && x.invite.token === seg[1]); if (k) return send(res, 200, { kid: k.name, family: f.name, claimed: !!k.invite.claimedBy }); }
       return send(res, 404, { error: 'دعوة غير صحيحة أو أُلغيت' });
+    }
+    // حدث إنجاز من وحدة عادة (خادم لخادم): التوقيع HMAC-SHA256 للجسم الخام بسرّ مشترك
+    if (seg[0] === 'habit-events' && m === 'POST') {
+      const raw = await readRaw(req, 20000); if (!raw) return send(res, 413, { error: 'كبير' });
+      const sig = String(req.headers['x-signature'] || ''), want = crypto.createHmac('sha256', HSECRET).update(raw).digest('hex');
+      if (sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return send(res, 401, { error: 'توقيع غير صحيح' });
+      let b; try { b = JSON.parse(raw.toString('utf8')); } catch (_) { return send(res, 400, { error: 'JSON' }); }
+      if (!['word'].includes(b.habit) || !/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return send(res, 400, { error: 'حدث غير صحيح' });
+      for (const f of db.families) { const k = f.kids.find(x => x.id === b.kidId); if (!k) continue;
+        k.hlog = k.hlog || []; if (!k.hlog.some(e => e.date === b.date && e.habit === b.habit)) k.hlog.push({ date: b.date, habit: b.habit, units: Math.max(0, +b.units || 0), secs: Math.max(0, Math.min(3600, +b.secs || 0)), confirmed: b.confirmed !== false, t: Date.now() });
+        await save(); return send(res, 200, { ok: true }); }
+      return send(res, 404, { error: 'ولد غير موجود' });
     }
     const a = acctOf(req); if (!a) return send(res, 401, { error: 'سجّل الدخول', login: true });
     // رفع نسخة مؤقتة من تسجيل التسميع (للتسميع المعلّق بانتظار تأكيد الأب)
@@ -127,14 +145,12 @@ function mount(ctx) {
       if (a.role !== 'guardian') return bad(403, 'للأب أو الأم فقط');
       if (m === 'POST' && !seg[1]) {
         if (famOf(a)) return bad(409, 'لديك عائلة');
-        const f = { id: rid(6), name: String(body.name || 'عائلتي').trim().slice(0, 40) || 'عائلتي', parentToken: rid(), kids: [], created: today(), guardians: [a.id] };
+        const f = { id: rid(6), name: String(body.name || 'عائلتي').trim().slice(0, 40) || 'عائلتي', kids: [], created: today(), guardians: [a.id] };
         db.families.push(f); a.familyId = f.id; await save(); return send(res, 200, { family: famBrief(f), onboarding: onboarding(a) });
       }
       const f = famOf(a); if (!f) return bad(404, 'أنشئ عائلتك أولاً');
       if (m === 'GET' && !seg[1]) return send(res, 200, { family: famBrief(f), guardians: f.guardians.length, kids: await Promise.all(f.kids.map(k => kidView(k, true))) });
       if (m === 'PUT' && !seg[1]) { if (body.name) f.name = String(body.name).trim().slice(0, 40) || f.name; await save(); return send(res, 200, { family: famBrief(f) }); }
-      if (seg[1] === 'pin' && m === 'PUT') { if (!/^\d{4}$/.test(String(body.pin || ''))) return bad(400, 'الرمز 4 أرقام'); f.pinHash = sha(f.id + ':' + body.pin); await save(); return send(res, 200, { ok: true }); }
-      if (seg[1] === 'pin' && seg[2] === 'verify' && m === 'POST') return send(res, 200, { ok: !!f.pinHash && f.pinHash === sha(f.id + ':' + String(body.pin || '')) });
     }
     if (seg[0] === 'kids' && !seg[1] && m === 'POST') {
       if (a.role !== 'guardian' || !famOf(a)) return bad(403, 'للأب أو الأم فقط');
@@ -148,6 +164,12 @@ function mount(ctx) {
       if (!sub && m === 'GET') return send(res, 200, await kidView(k, guard));
       if (sub === 'state' && m === 'GET') return send(res, 200, await kidView(k, guard));
       if (sub === 'result' && m === 'POST') { const r = await submitResult(k, body); return r.err ? bad(r.err[0], r.err[1]) : send(res, 200, await kidView(k, guard)); }
+      if (sub === 'habit-token' && m === 'GET') {   // رمز موقّع لفتح وحدة العادة بهوية الولد دون حساب هناك
+        const base = process.env.KALIMATI_URL, habit = url.searchParams.get('habit') || 'word';
+        if (!base || habit !== 'word' || !(k.habits || []).includes('word')) return bad(503, 'عادة الكلمة غير مفعّلة');
+        const token = mkToken({ k: k.id, n: k.name, a: k.age, h: habit, e: Date.now() + 10 * 60e3 });
+        return send(res, 200, { url: `${base.replace(/\/$/, '')}/?t=${encodeURIComponent(token)}` });
+      }
       if (sub === 'month' && m === 'GET') return send(res, 200, (await kidView(k, false)).points);
       if (!guard) return bad(403, 'للأب أو الأم فقط');
       if (!sub && m === 'PUT') {

@@ -14,7 +14,8 @@ const ICONS = {
   back: 'M9 6l6 6-6 6', plus: 'M12 5v14M5 12h14', check: 'M5 13l4 4L19 7', share: 'M12 15V3M8 7l4-4 4 4M5 12v8h14v-8',
   gear: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z',
   family: 'M3 21v-1a5 5 0 015-5h2M7 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM13 21v-1a4 4 0 014-4h1a3 3 0 013 3v2M17.5 12a3 3 0 100-6 3 3 0 000 6z', kid: 'M12 12a4 4 0 100-8 4 4 0 000 8zM5 21v-2a6 6 0 0112 0v2',
-  gift: 'M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7S10 3 7.5 3 5 6 7.5 7M12 7s2-4 4.5-4S19 6 16.5 7', mail: 'M3 6h18v12H3zM3 7l9 7 9-7', seed: 'M12 21v-9M12 12C12 8 9 6 5 6c0 4 3 6 7 6zM12 14c0-3 2-5 6-5 0 3-2 5-6 5z',
+  gift: 'M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7S10 3 7.5 3 5 6 7.5 7M12 7s2-4 4.5-4S19 6 16.5 7', mail: 'M3 6h18v12H3zM3 7l9 7 9-7', book: 'M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2zM4 21V5M9 7h6M9 11h6',
+  seed: 'M12 21v-9M12 12C12 8 9 6 5 6c0 4 3 6 7 6zM12 14c0-3 2-5 6-5 0 3-2 5-6 5z',
 };
 const NS = 'http://www.w3.org/2000/svg';
 const ic = (n, cls) => { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); if (cls) s.setAttribute('class', cls); const p = document.createElementNS(NS, 'path'); p.setAttribute('d', ICONS[n]); s.append(p); return s; };
@@ -43,7 +44,7 @@ const confirmTyped = async (msg, word = 'حذف') => confirm(msg) && prompt('ل�
 const ring = (done, total, label) => { const C = 2 * Math.PI * 40, off = total ? C * (1 - Math.min(1, done / total)) : C;
   return el('div', { class: 'ring' }, raw(`<svg viewBox="0 0 96 96"><circle class="bg" cx="48" cy="48" r="40"/><circle class="fg" cx="48" cy="48" r="40" stroke-dasharray="${C}" stroke-dashoffset="${off}"/></svg>`), el('b', {}, label)); };
 async function refreshMe() { ME = await api('v2/me'); return ME; }
-async function logout() { try { await api('v2/logout', 'POST', {}); } catch (_) {} ['ayah_session', 'ayah_parent', 'ayah_kid', 'ayah_invite', 'ayah_j'].forEach(ls.del); location.href = '/app'; }
+async function logout() { try { await api('v2/logout', 'POST', {}); } catch (_) {} ['ayah_session', 'ayah_invite', 'ayah_j'].forEach(ls.del); location.href = '/app'; }
 
 // ───── تسجيل الدخول والدعوة ─────
 const startAuth = prov => nativeBrowser('/auth/start/' + prov + (window.NATIVE ? '?app=1' : ''));
@@ -177,7 +178,12 @@ function pendingBox(k) {
     el('p', { class: 'note' }, 'لم يستطع التطبيق التحقق من تسميعه بالصوت. أكّد فقط إن سمعتَه بنفسك؛ لا تُحسب الآية ولا النقاط قبل تأكيدك.'),
     ...k.pending.map(p => { const slot = el('div'); return el('div', { style: 'padding:8px 0;border-bottom:1px solid var(--line)' }, el('div', { class: 'row sb' }, el('b', {}, p.label), el('span', { class: 'mute' }, p.date)), el('div', { class: 'mute', style: 'margin:2px 0 6px' }, WHY[p.why] || 'لم يُسمَّع بالصوت'),
       p.hasRec ? [el('button', { class: 'btn sm ghost', onclick: () => playRec(k, p, slot) }, '▶ استمع لتسميعه'), slot] : el('div', { class: 'mute' }, 'لا يوجد تسجيل لهذا التسميع.'),
+      FAM && FAM.kids.length > 1 ? moveRow(k, p) : '',
       el('div', { class: 'row' }, el('button', { class: 'btn sm', onclick: () => confirmSession(k, p, true) }, 'سمعتُه وصحّ'), el('button', { class: 'btn sm ghost', onclick: () => confirmSession(k, p, false) }, 'لم أسمعه / يعيد'))); }));
+}
+function moveRow(k, p) {   // سُجّل التسميع على ولد خطأً: انقله إلى أخيه
+  const sel = el('select', { 'aria-label': 'نقل إلى', style: 'min-height:40px;margin:0;flex:1' }, FAM.kids.filter(x => x.id !== k.id).map(x => el('option', { value: x.id }, x.name)));
+  return el('div', { class: 'row', style: 'margin:6px 0' }, el('span', { class: 'mute' }, 'ليس ولدك هذا؟'), sel, el('button', { class: 'btn sm ghost', onclick: async () => { try { await api(`v2/kids/${k.id}/sessions/${p.sid}/move`, 'POST', { toKid: sel.value }); toast('نُقل التسميع'); route(); } catch (e) { toast(errMsg(e)); } } }, 'نقل'));
 }
 async function playRec(k, p, slot) {   // يجلب التسجيل المؤقت بجلسة الأب ويشغّله
   try { const r = await fetch(`/api/v2/kids/${k.id}/sessions/${p.sid}/recording`, { headers: { 'X-Session': ls.get('ayah_session') || '' } }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'لا يوجد تسجيل'); const b = await r.blob(); slot.replaceChildren(el('audio', { controls: true, autoplay: true, src: URL.createObjectURL(b), style: 'width:100%;margin-top:6px' })); } catch (e) { toast(errMsg(e)); }
@@ -189,7 +195,7 @@ function homeTab() {
     if (!f.kids.length) return empty('seed', 'أضف ولدك الأول', 'أكمل رحلة الإعداد لتبدأ العادات.', el('button', { class: 'btn', onclick: () => { ls.set('ayah_j', '1'); route(); } }, 'إكمال الإعداد'));
     const done = f.kids.filter(k => k.newToday).length;
     return el('div', {}, el('div', { class: 'hero' }, el('div', { class: 'ringwrap' }, ring(done, f.kids.length, `${done}/${f.kids.length}`), el('div', {}, el('div', { class: 'mute' }, todayAr()), el('h1', { style: 'margin:2px 0' }, f.family.name), el('div', { class: 'mute' }, done === f.kids.length ? 'أنجز الجميع اليوم، ما شاء الله' : 'أنجزوا عاداتهم اليوم')))),
-      ...f.kids.map(pendingBox).filter(Boolean), ...f.kids.map((k, i) => kidCard(k, i, () => go('kid/' + k.id))));
+      ...(checklistCard(f) ? [checklistCard(f)] : []), ...f.kids.map(pendingBox).filter(Boolean), ...f.kids.map((k, i) => kidCard(k, i, () => go('kid/' + k.id))));
   });
 }
 function kidsTab() {
@@ -222,6 +228,7 @@ function profileTab() {
       el('div', { class: 'mute' }, `${f.kids.length} أولاد · ${f.guardians} ${f.guardians > 1 ? 'أوصياء' : 'وصيّ'}`)),
       el('div', { class: 'card' }, el('label', {}, 'اسم العائلة'), name, el('button', { class: 'btn ghost', onclick: async () => { try { await api('v2/family', 'PUT', { name: name.value }); toast('تم الحفظ'); profileTab(); } catch (e) { toast(errMsg(e)); } } }, 'حفظ الاسم')),
       el('div', { class: 'card' }, el('h2', {}, 'الأولاد'), f.kids.length ? f.kids.map((k, i) => el('div', { class: 'kidmini', style: 'cursor:pointer', onclick: () => go('kid/' + k.id) }, avatar(k.name, i, 40), el('div', { class: 'grow' }, el('h3', {}, k.name)), inviteChip(k))) : el('p', { class: 'mute' }, 'لا يوجد أولاد بعد.'), el('button', { class: 'btn ghost', onclick: () => go('kid/new') }, ic('plus'), 'إضافة ولد')),
+      el('button', { class: 'btn ghost', onclick: () => go('guide') }, ic('book'), 'دليل الأب'),
       el('button', { class: 'btn ghost', onclick: () => go('settings') }, ic('gear'), 'الإعدادات'));
   });
 }
@@ -237,7 +244,7 @@ function settingsScreen() {
     el('div', { class: 'card' }, el('a', { class: 'btn ghost', href: '/privacy' }, 'سياسة الخصوصية'), el('button', { class: 'btn ghost', onclick: logout }, 'تسجيل الخروج'),
       el('button', { class: 'btn danger', onclick: async () => {
         if (!(await confirmTyped(guard ? 'سيُحذف حسابك وعائلتك وكل أولادك وسجلاتهم نهائياً ولا يمكن التراجع. متابعة؟' : 'سيُفك ارتباط حسابك بملفك ويُحذف حسابك. متابعة؟'))) return;
-        try { await api('v2/account', 'DELETE', { confirm: 'حذف' }); ['ayah_session', 'ayah_parent', 'ayah_kid', 'ayah_j'].forEach(ls.del); location.href = '/app'; } catch (e) { toast(errMsg(e)); }
+        try { await api('v2/account', 'DELETE', { confirm: 'حذف' }); ['ayah_session', 'ayah_j'].forEach(ls.del); location.href = '/app'; } catch (e) { toast(errMsg(e)); }
       } }, guard ? 'حذف حسابي وكل بيانات العائلة' : 'حذف حسابي')));
   mount([header('الإعدادات', { back: guard ? 'profile' : 'me' }), body]); root.append(tabbar(guard ? GTABS : STABS, guard ? 'profile' : 'me'));
 }
@@ -245,8 +252,11 @@ async function kidForm(k) {   // نموذج تعديل بيانات الولد: 
   const names = await surahNames();
   const name = el('input', { value: k.name, maxlength: 30, 'aria-label': 'اسم الولد' }), age = el('select', {}, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(a => el('option', { value: a, selected: a === k.age }, `${a} سنة`)));
   const start = el('select', {}, names.map(s => el('option', { value: s.n, selected: s.n === k.start }, `${s.name} (${s.n})`)));
-  return [el('label', {}, 'الاسم'), name, el('label', {}, 'العمر'), age, el('label', {}, 'الخطة تبدأ من سورة'), start, el('div', { class: 'sw' }, el('span', {}, 'آية اليوم'), el('button', { class: 'toggle on', 'aria-label': 'آية اليوم', disabled: true })), el('div', { class: 'sw' }, el('span', {}, 'كلمة اليوم'), el('span', { class: 'chip gray' }, 'قريباً')),
-    el('button', { class: 'btn', onclick: async () => { try { await api('v2/kids/' + k.id, 'PUT', { name: name.value, age: +age.value, start: +start.value, habits: k.habits || ['ayah'] }); toast('تم الحفظ'); kidDetail(k.id); } catch (e) { toast(errMsg(e)); } } }, 'حفظ البيانات')];
+  const habitSet = new Set(k.habits || ['ayah']);
+  const wt = el('button', { class: 'toggle' + (habitSet.has('word') ? ' on' : ''), 'aria-label': 'كلمة اليوم', onclick: () => { habitSet.has('word') ? habitSet.delete('word') : habitSet.add('word'); wt.classList.toggle('on', habitSet.has('word')); } });
+  const wordRow = CFG.kalimati ? el('div', { class: 'sw' }, el('span', {}, 'كلمة اليوم (إنجليزي)'), wt) : el('div', { class: 'sw' }, el('span', {}, 'كلمة اليوم (إنجليزي)'), el('span', { class: 'chip gray' }, 'قريباً'));
+  return [el('label', {}, 'الاسم'), name, el('label', {}, 'العمر'), age, el('label', {}, 'الخطة تبدأ من سورة'), start, el('div', { class: 'sw' }, el('span', {}, 'آية اليوم'), el('button', { class: 'toggle on', 'aria-label': 'آية اليوم', disabled: true })), wordRow,
+    el('button', { class: 'btn', onclick: async () => { try { await api('v2/kids/' + k.id, 'PUT', { name: name.value, age: +age.value, start: +start.value, habits: [...habitSet] }); toast('تم الحفظ'); kidDetail(k.id); } catch (e) { toast(errMsg(e)); } } }, 'حفظ البيانات')];
 }
 function kidDetail(id) {
   guardianShell('kids', 'ملف الولد', f => {
@@ -332,8 +342,37 @@ function meTab() {
 }
 
 // ───── التوجيه والإقلاع ─────
+
+// ───── دليل الأب: كيف تدير أولادك برحلة تعليمية ─────
+const GUIDE = [
+  ['ابدأ في خمس دقائق', ['أضف ولدك باسمه وعمره فقط، فالخطة تُضبط بحسب عمره.', 'حدّد المكافأة إن أردت، أو تجاوزها وعُد لها لاحقاً من صفحته.', 'أرسل له رابط الدعوة من جواله، فيفتحه ويسجّل دخوله ويرتبط بملفه تلقائياً.', 'اجلس معه في أول يوم مدة خمس دقائق ليرى أن الأمر خفيف وليس عبئاً.']],
+  ['أول ثلاثة أيام: اجلس بجانبه', ['دعه يستمع للآية ويردد خلف القارئ كما في الحلقة، ولا تكثر التصحيح.', 'امدح التزامه قبل إتقانه: «جاء وقتك وبدأتَ بنفسك» أنفع من «أخطأتَ هنا».', 'إن تعثّر في كلمة فاتركها لحلقة الغد، فالمراجعة المتباعدة تعالج الكلمات الضعيفة.', 'ثلاثة أيام متواصلة تبني العادة أكثر من يوم طويل واحد.']],
+  ['كيف تؤكد التسميع', ['عندما لا يستطيع التطبيق سماع ولدك ويطلب تأكيدك، تجد بطاقة «تسميع ينتظر تأكيدك» في الرئيسية.', 'اضغط ▶ واستمع للتسجيل. إن سمعتَ الآية صحيحة فاضغط «سمعتُه وصحّ».', 'إن لم تسمع أو لم تكن الآية صحيحة فاضغط «لم أسمعه»، فيعيدها ولا تُحسب نقاطه.', 'إن سُجّل التسميع على ولد خطأً فاختر أخاه وانقله بزر «نقل».']],
+  ['اليوم الفائت بلا عقاب', ['يفوت اليوم أحياناً: مرض أو سفر أو انشغال. لا تجعلها معركة.', 'يوم الراحة الأسبوعي وإجازات الشهر لا تدخل حساب النقاط، فلا يُظلَم ولدك.', 'ابدأ الغد كأن شيئاً لم يكن؛ المهم أن تعود العادة، لا أن لا تنقطع أبداً.', 'خفّف الخطة مؤقتاً إن رأيتَ ثقلاً: آية أقصر خير من ترك كامل.']],
+  ['المكافأة: كيف تقدّمها وتتحدث عنها', ['قرّر المبلغ قبل بدء الشهر واشرح لولدك القاعدة: كل يوم كامل يقرّبه من المبلغ كله.', 'التطبيق يحسب ما يستحقه ولا يدفع، فسلّمه في موعده كما وعدتَه ولو كان أقل من السقف.', 'اجعل الحديث عن المكافأة تقديراً لجهده، وعن الحفظ نفسه فضلاً ونعمة، حتى لا يصير المال هو الغاية.', 'يمكنك إخفاء المبلغ عن ولدك وإظهار نقاطه فقط.']],
+  ['متى ترفع الصعوبة', ['بعد أسبوعين من الالتزام السهل يمكنك البدء بسورة أطول أو آية أطول.', 'لا تقفز بولد صغير؛ الثبات على القليل أنفع من البدء بالكثير ثم الترك.', 'راقب زمن الدرس في «التقدّم»: إن طال كثيراً فالخطة أثقل مما ينبغي.', 'غيّر سورة البداية من صفحة الولد متى شئت.']],
+  ['بعد الشهر الأول', ['اجلس مع ولدك وراجعوا معاً ما حفظ وكم يوماً التزم، وهنّئه.', 'سلّمه مكافأته، ثم اتفقوا على هدف الشهر التالي.', 'أضف عادة ثانية حين تثبت الأولى، فلا تحمّله عادتين في أسبوع واحد.', 'ثباتك أنت في المتابعة أهم من أي إعداد في التطبيق.']],
+];
+function guideScreen() {
+  const idx = +(here().split('/')[1] || -1);
+  if (idx >= 0 && GUIDE[idx]) { const [t, pts] = GUIDE[idx];
+    mount([header(t, { back: 'guide' }), el('div', { class: 'card' }, el('ol', { style: 'margin:0;padding-inline-start:20px;line-height:2' }, pts.map(x => el('li', {}, x)))),
+      idx < GUIDE.length - 1 ? el('button', { class: 'btn', onclick: () => go('guide/' + (idx + 1)) }, 'التالي: ' + GUIDE[idx + 1][0]) : el('button', { class: 'btn', onclick: () => go('home') }, 'إلى الرئيسية')]); root.append(tabbar(GTABS, 'profile')); return; }
+  mount([header('دليل الأب', { back: 'profile' }), el('p', { class: 'lead' }, 'سبع بطاقات قصيرة تعينك على إدارة رحلة أولادك بهدوء.'), GUIDE.map(([t, pts], i) => el('div', { class: 'card tap', onclick: () => go('guide/' + i) }, el('div', { class: 'row' }, el('div', { class: 'avatar av' + (i % 5) }, i + 1), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, t), el('div', { class: 'mute' }, pts[0]))))) ]);
+  root.append(tabbar(GTABS, 'profile'));
+}
+function checklistCard(f) {   // «ابدأ في 5 دقائق»: تظهر حتى تكتمل
+  const k = f.kids, steps = [['سمِّ العائلة', true, () => go('profile')], ['أضف ولداً', k.length > 0, () => go('kid/new')], ['حدّد المكافأة', k.some(x => x.points && x.points.mode !== 'none'), () => k[0] ? go('kid/' + k[0].id) : go('kid/new')],
+    ['أرسل الدعوة وليرتبط ولدك', k.some(x => x.invite && x.invite.status === 'claimed'), () => k[0] ? go('kid/' + k[0].id) : go('kid/new')], ['أول درس لولدك', k.some(x => x.memorized > 0 || x.streak > 0), () => go('guide/0')]];
+  if (ls.get('ayah_chk_done') || steps.every(x => x[1])) { if (steps.every(x => x[1])) ls.set('ayah_chk_done', '1'); return null; }
+  const done = steps.filter(x => x[1]).length;
+  return el('div', { class: 'card' }, el('div', { class: 'row sb' }, el('h2', { style: 'margin:0' }, 'ابدأ في 5 دقائق'), el('span', { class: 'chip' }, `${done}/5`)), el('div', { class: 'bar' }, el('i', { style: `width:${done * 20}%` })),
+    steps.map(([t, ok, fn]) => el('div', { class: 'sw tap', style: 'cursor:pointer', onclick: fn }, el('span', { style: ok ? 'color:var(--mute);text-decoration:line-through' : 'font-weight:700' }, t), ok ? el('span', { class: 'chip ok' }, ic('check', '')) : el('span', { class: 'chip warn' }, 'الآن'))),
+    el('button', { class: 'link', onclick: () => go('guide') }, 'اقرأ دليل الأب'));
+}
 function guardianRoute() {
   const h = here(), m = /^kid\/(.+)$/.exec(h);
+  if (h === 'guide' || /^guide\/\d+$/.test(h)) return guideScreen();
   if (m && m[1] === 'new') return newKid();
   if (m) return kidDetail(m[1]);
   ({ home: homeTab, kids: kidsTab, habits: habitsTab, progress: progressTab, profile: profileTab, settings: settingsScreen }[h] || homeTab)();

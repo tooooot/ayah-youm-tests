@@ -5,8 +5,6 @@
   const C = window.Capacitor, native = !!(C && C.isNativePlatform && C.isNativePlatform());
   window.NATIVE = native;
   try {
-    const m = /^\/(k|p)\/([\w-]+)$/.exec(location.pathname);
-    if (m) localStorage.setItem(m[1] === 'k' ? 'ayah_kid' : 'ayah_parent', m[2]);
   } catch (_) {}
   if (!native) { window.nativeBrowser = u => { location.href = u; }; return; }
   const P = C.Plugins || {};
@@ -14,7 +12,7 @@
     try {
       const u = new URL(raw);
       if (u.protocol === 'thabat:') { location.href = '/auth/done?t=' + encodeURIComponent(u.searchParams.get('t') || ''); return; }
-      if (/^\/(i|k|p)\/[\w-]+$/.test(u.pathname) || u.pathname === '/auth/done') location.href = u.pathname + u.search;
+      if (/^\/i\/[\w-]+$/.test(u.pathname) || u.pathname === '/auth/done') location.href = u.pathname + u.search;
     } catch (_) {}
   };
   if (P.App) {

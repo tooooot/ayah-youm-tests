@@ -41,13 +41,17 @@ check('تقسيم الآيات الطويلة عند علامات الوقف (ص
 check('الآيات الطويلة مقسّمة', sum(1 for p in plan.values() if 'ch' in p) >= 10, sum(1 for p in plan.values() if 'ch' in p))
 
 # ───── تشغيل الخادم ─────
-tmp = tempfile.mkdtemp(); env = dict(os.environ, DATA_DIR=tmp, PORT='3100')
+tmp = tempfile.mkdtemp(); env = dict(os.environ, DATA_DIR=tmp, PORT='3100', TEST_AUTH='1')
 srv = subprocess.Popen(['node', ROOT + '/server/server.js'], env=env, stdout=open(OUT + '/server.log', 'w'), stderr=subprocess.STDOUT); time.sleep(2)
 def post(p, b): return json.load(urllib.request.urlopen(urllib.request.Request(B + p, data=json.dumps(b).encode(), headers={'Content-Type': 'application/json'})))
 try:
-    PT = urllib.request.urlopen(urllib.request.Request(B + '/admin/new-family', data=json.dumps({'name': 'ت'}).encode(), headers={'Content-Type': 'application/json'})).read().decode().strip().split('/p/')[1]
-    for nm, age, st in (('ص', 6, 114), ('ك', 14, 67)): post(f'/api/parent/{PT}/kids', {'name': nm, 'age': age, 'start': st})
-    kids = json.load(urllib.request.urlopen(f'{B}/api/parent/{PT}'))['kids']; TOK = {k['name']: k['token'] for k in kids}
+    def acall(path, body, sess=None):
+        h = {'Content-Type': 'application/json'}; sess and h.update({'X-Session': sess})
+        return json.load(urllib.request.urlopen(urllib.request.Request(B + path, data=json.dumps(body).encode(), headers=h)))
+    SESS = acall('/api/auth/test', {'ident': 'run-guardian'})['session']
+    acall('/api/v2/family', {'name': 'ت'}, SESS); KID = {}
+    for nm, age, st in (('ص', 6, 114), ('ك', 14, 67)): KID[nm] = acall('/api/v2/kids', {'name': nm, 'age': age, 'start': st}, SESS)['id']
+    SESSJS = f"try{{localStorage.setItem('ayah_session','{SESS}')}}catch(e){{}}"
     DUR = {k: [v['ds'], v['df']] for k, v in plan.items()}
     INIT = """window.__DUR=%s;window.__plays=[];
 window.Audio=class{constructor(s){this.src=s;const m=s.match(/(\\d{6})\\.mp3/);const k=m?m[1]:'114001';this.slow=s.includes('/audio/');this.duration=(window.__DUR[k]||[4,4])[this.slow?0:1];this.readyState=4;this._off=0;this._t0=null;this._tm=null}
@@ -57,7 +61,7 @@ window.Audio=class{constructor(s){this.src=s;const m=s.match(/(\\d{6})\\.mp3/);c
 window.__say='';window.SpeechRecognition=class{start(){setTimeout(()=>{this.onresult&&this.onresult({results:[[{transcript:window.__say}]]})},80)}stop(){setTimeout(()=>this.onend&&this.onend(),20)}};""" % json.dumps(DUR)
     errs = []
     with sync_playwright() as p:
-        b = p.chromium.launch(); ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=1, locale='ar-SA'); ctx.add_init_script(INIT)
+        b = p.chromium.launch(); ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=1, locale='ar-SA'); ctx.add_init_script(INIT); ctx.add_init_script(SESSJS)
         pg = ctx.new_page(); pg.on('pageerror', lambda e: errs.append(str(e)))
         # ───── ٢. صفحات المصحف (كل صفحة) ─────
         open(SITE + '/_t.html', 'w').write("""<script src=/common.js></script><script src=/mushaf.js></script><link rel=stylesheet href=/app.css><body class=paper><div id=a style='width:378px;margin:0 auto'></div>
@@ -72,7 +76,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
         check('صفحات المصحف: لا تجاوز أسطر', not bad, bad); check('خط الصفحة', min(fss) >= 17, f'{min(fss)}–{max(fss)}px')
         os.remove(SITE + '/_t.html')
         # ───── ٣. الآية داخل النافذة بلا تمرير لكل آية ─────
-        pg.goto(B + '/k/' + TOK['ص']); pg.wait_for_selector('text=ابدأ الآن'); pg.evaluate('window.__hang=true')
+        pg.goto(B + '/lesson/' + KID['ص']); pg.wait_for_selector('text=ابدأ الدرس'); pg.evaluate('window.__hang=true')
         keys = sorted(UN); out = []; t0 = time.time()
         for k in keys:
             pg.evaluate("(u)=>lesson(u,'review')", UN[k]); pg.wait_for_selector('.mpage .mw.f', timeout=15000); pg.wait_for_timeout(120)
@@ -83,16 +87,17 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
         b.close()
         # ───── ٤. محاكاة دروس كاملة بساعة مزيفة ─────
         def sim(key, expect_chunk=None):
-            ctx2 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx2.add_init_script(INIT); pg2 = ctx2.new_page(); pg2.on('pageerror', lambda e: errs.append(str(e)))
-            pg2.clock.install(); pg2.goto(B + '/k/' + TOK['ص']); pg2.wait_for_selector('text=ابدأ الآن'); pg2.evaluate("(u)=>lesson(u,'practice')", UN[key]); pg2.wait_for_selector('.mpage .mw.f'); pg2.add_style_tag(content='*{transition:none!important;animation:none!important}'); pg2.wait_for_timeout(300)
-            seq = []; t = 0; cur_n = 0; out_n = 0; maxsc = 1; mism = 0; stale = 0; blurred = 0; turn_bad = 0; saw_mine = 0; clicked = False
-            while t < 900:
-                pg2.clock.run_for(500); t += .5
+            ctx2 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx2.add_init_script(INIT); ctx2.add_init_script(SESSJS); pg2 = ctx2.new_page(); pg2.on('pageerror', lambda e: errs.append(str(e)))
+            pg2.clock.install(); pg2.goto(B + '/lesson/' + KID['ص']); pg2.wait_for_selector('text=ابدأ الدرس'); pg2.evaluate("(u)=>lesson(u,'practice')", UN[key]); pg2.wait_for_selector('.mpage .mw.f'); pg2.add_style_tag(content='*{transition:none!important;animation:none!important}'); pg2.wait_for_timeout(300)
+            seq = []; first_listens = 0; counting = True; t = 0; cur_n = 0; out_n = 0; maxsc = 1; mism = 0; stale = 0; blurred = 0; turn_bad = 0; saw_mine = 0; clicked = False
+            while t < 1500:
+                pg2.clock.run_for(1000); t += 1
                 st = pg2.evaluate("""()=>{const tb=document.querySelector('.turn');const c=[...document.querySelectorAll('.zoombox .w')].findIndex(x=>x.classList.contains('cur'));const pc=document.querySelectorAll('.mpage .mw.cur').length;const cw=document.querySelector('.mpage .mw.f.cur'),ap=document.getElementById('app').getBoundingClientRect(),cr=cw?cw.getBoundingClientRect():null;const sc=new DOMMatrix(getComputedStyle(document.querySelector('.mpage')).transform).a;const cards=document.querySelectorAll('.zoombox .quran').length;
                   const op=x=>{const e=document.querySelector(x);return e?parseFloat(getComputedStyle(e).opacity):null};
                   return {b:tb?tb.textContent:'',c,pc,cards,sc,out:cr?(cr.left+cr.width/2<ap.left||cr.left+cr.width/2>ap.right||cr.top+cr.height/2<ap.top||cr.top+cr.height/2>ap.bottom):false,has:!!cr,tm:document.body.classList.contains('tm'),tl:document.body.classList.contains('tl'),zm:document.querySelector('.zoombox').classList.contains('mine'),op:op('.mpage .mw:not(.f)'),blur:getComputedStyle(document.querySelector('.mpage .mw:not(.f)')).filter,
                   dots:document.querySelectorAll('.dots2 i').length,ready:[...document.querySelectorAll('.dock .btn')].some(x=>x.textContent.includes('جاهز للتسميع')&&!x.disabled),stale:!!document.querySelector('.dock .mute.say,.dock .bar')}}""")
                 if not seq or seq[-1] != st['b']: seq.append(st['b'])
+                if counting and 'دورك' in st['b']: counting = False; first_listens = pg2.evaluate('window.__plays.length') - 1   # كم استماعاً سبق أول دور له
                 if st['pc'] > 1 or st['cards']: mism += 1   # كلمة واحدة جارية، ولا بطاقة علوية
                 if st['has']: cur_n += 1; out_n += st['out']; maxsc = max(maxsc, st['sc'])
                 if st['stale']: stale += 1                  # لا عدّاد نصي ولا شريط تقدّم
@@ -106,7 +111,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
                     if not clicked and saw_mine == 3: pg2.get_by_text('✓ انتهيت').click(); clicked = True
                 if st['ready']: break
             plays = pg2.evaluate('window.__plays')
-            return pg2, ctx2, {'secs': t, 'plays': len(plays), 'slow': sum(1 for x in plays if x[0] == 'S'), 'mism': mism, 'cur_n': cur_n, 'out_n': out_n, 'maxsc': maxsc, 'stale': stale, 'blurred': blurred, 'turn_bad': turn_bad, 'dots': st['dots'], 'seq': seq, 'ready': st['ready'], 'mine': saw_mine}
+            return pg2, ctx2, {'secs': t, 'plays': len(plays), 'slow': sum(1 for x in plays if x[0] == 'S'), 'mism': mism, 'cur_n': cur_n, 'out_n': out_n, 'maxsc': maxsc, 'stale': stale, 'blurred': blurred, 'turn_bad': turn_bad, 'dots': st['dots'], 'first_listens': first_listens, 'seq': seq, 'ready': st['ready'], 'mine': saw_mine}
         b2 = p.chromium.launch() if False else None
     with sync_playwright() as p2:
         b2 = p2.chromium.launch()
@@ -118,11 +123,12 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
             check(f'درس {kind}: الكاميرا تقترب (تكبير ≥1.4) وتبقى الكلمة الجارية داخل الشاشة', r['maxsc'] >= 1.4 and r['cur_n'] > 5 and r["out_n"] <= max(2, r["cur_n"] * .04), (round(r['maxsc'], 2), r['cur_n'], r['out_n']))
             check(f'درس {kind}: الصفحة بلا تمويه وبلا عدّاد/شريط', r['blurred'] == 0 and r['stale'] == 0, (r['blurred'], r['stale']))
             check(f'درس {kind}: شاشة «دورك» تختلف (إطار أخضر + صفحة تخفت) وشاشة الاستماع هادئة', r['turn_bad'] == 0, r['turn_bad'])
-            check(f'درس {kind}: نقاط التقدّم بعدد الخطوات', r['dots'] >= 10, r['dots'])
-            if not ch: check(f'درس {kind}: استماعات وترديدات متساوية (10+10، وتقلّ حتى 5+5 لسقف 5 دقائق)', r['plays'] in (10, 12, 14, 16, 18, 20) and r['slow'] == 1, r['plays'])
-            else: check(f'درس {kind}: مقاطع ثم كاملة', r['plays'] >= 10, r['plays'])
+            check(f'درس {kind}: نقاط التقدّم للمجموعة الحالية (≤ 20 نقطة لا عشرات)', 6 <= r['dots'] <= 20, r['dots'])
+            if not ch: check(f'درس {kind}: 10 استماعات تلقائية ثم 10 ترديدات (20 تشغيلاً، أولها بطيء)', r['plays'] == 20 and r['slow'] == 1, (r['plays'], r['slow']))
+            else: check(f'درس {kind}: كل مقطع 10 استماعات + 10 ترديدات ثم الآية كاملة ×3 (استماعاً وترديداً)', r['plays'] == 20 * len(plan[key]['ch']) + 6, (r['plays'], len(plan[key]['ch'])))
+            check(f'درس {kind}: يبدأ بعشر استماعات متتالية بلا فرصة ترديد في أول قراءة', r['first_listens'] >= 10, r['first_listens'])
             check(f'درس {kind}: بانر «دورك» يظهر', r['mine'] > 0, r['seq'][:4])
-            check(f'درس {kind}: زمن ≤ 330ث', r['secs'] <= 330, r['secs'])
+            check(f'درس {kind}: الزمن معقول (≤ 15 دقيقة)', r['secs'] <= 900, r['secs']); print('LESSON-TIME', key, round(r['secs']), flush=True)
             # تسميع
             pg2.get_by_text('جاهز للتسميع').click(); pg2.wait_for_selector('.mic'); pg2.wait_for_timeout(300)
             check(f'التسميع {key}: الصفحة بألوانها (لا تعتيم) والميكروفون يستجيب', pg2.evaluate("parseFloat(getComputedStyle(document.querySelector('.mpage .mw:not(.f)')).opacity)") == 1 and pg2.evaluate("!document.querySelector('.mpage').classList.contains('dimrest')"), '')
@@ -135,8 +141,8 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
                 n = len(W[key]); check('تلوين نتيجة آية «يا أيها» (hit/miss بعدد كلماتها)', pg2.locator('.mpage .mw.f.hit, .mpage .mw.f.miss').count() == n and pg2.locator('.zoombox .quran').count() == 0, pg2.locator('.mpage .mw.f.hit').count())
             ctx2.close()
         # تغذية راجعة حيّة: الكلمات التي ينطقها تخضرّ أثناء دوره (تعرّف الكلام مُحاكى)
-        ctx3 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx3.add_init_script(INIT + "window.__fast=true;window.__live=true;"); pg3 = ctx3.new_page(); pg3.on('pageerror', lambda e: errs.append(str(e)))
-        pg3.goto(B + '/k/' + TOK['ص']); pg3.wait_for_selector('text=ابدأ الآن'); pg3.evaluate("(s)=>window.__say=s", UN['114002']['c']); pg3.evaluate("(u)=>lesson(u,'practice')", UN['114002']); pg3.wait_for_selector('.mpage .mw.f')
+        ctx3 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx3.add_init_script(INIT + "window.__fast=true;window.__live=true;"); ctx3.add_init_script(SESSJS); pg3 = ctx3.new_page(); pg3.on('pageerror', lambda e: errs.append(str(e)))
+        pg3.goto(B + '/lesson/' + KID['ص']); pg3.wait_for_selector('text=ابدأ الدرس'); pg3.evaluate("(s)=>window.__say=s", UN['114002']['c']); pg3.evaluate("(u)=>lesson(u,'practice')", UN['114002']); pg3.wait_for_selector('.mpage .mw.f')
         seen = 0
         for _ in range(160):
             pg3.wait_for_timeout(250)

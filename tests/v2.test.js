@@ -11,7 +11,7 @@ before(async () => {
   const v1 = { families: [{ id: 'f1', name: 'عائلة قديمة', parentToken: 'PT-OLD', owners: ['google:old-owner'], sessions: [sha('old-session')], created: '2026-10-30',
     kids: [{ id: 'k1', token: 'KT-OLD', name: 'زياد', age: 14, start: 67, reward: 'نزهة', rewardDays: 7, time: '06:30', rewardSince: null, created: '2026-10-30',
       log: [{ id: 'l1', date: '2026-10-31', key: '067001', kind: 'new', score: 1, method: 'voice', status: 'ok', secs: 100 }] }] }] };
-  E = await startEnv({ files: { 'db.json': v1 }, env: { RELAY_TTL_MS: '4000', RELAY_PURGE_MS: '500' } });
+  E = await startEnv({ files: { 'db.json': v1 }, env: { RELAY_TTL_MS: '4000', RELAY_PURGE_MS: '500', KALIMATI_URL: 'https://kalimati.example' } });
 });
 after(() => E && E.stop());
 const G = async (sub) => { const s = await E.signIn(sub); await E.call(s.session, 'POST', '/api/v2/role', { role: 'guardian' }); return s.session; };
@@ -108,15 +108,6 @@ test('تجديد الدعوة يلغي ارتباط الحساب القديم', 
   assert.equal((await E.j('/api/v2/invites/' + tok)).r.status, 404, 'الرابط القديم ميت');
 });
 
-test('رمز وضع الأولاد (4 أرقام) للقفل المحلي', async () => {
-  const dad = await G('dad7'); await E.call(dad, 'POST', '/api/v2/family', { name: 'رمز' });
-  assert.equal((await E.call(dad, 'PUT', '/api/v2/family/pin', { pin: '12' })).r.status, 400);
-  assert.equal((await E.call(dad, 'PUT', '/api/v2/family/pin', { pin: '4821' })).r.status, 200);
-  assert.equal((await E.call(dad, 'POST', '/api/v2/family/pin/verify', { pin: '4821' })).j.ok, true);
-  assert.equal((await E.call(dad, 'POST', '/api/v2/family/pin/verify', { pin: '0000' })).j.ok, false);
-  assert.equal((await E.call(dad, 'GET', '/api/v2/family')).j.family.hasPin, true);
-});
-
 test('حذف الحساب: الوصيّ يحذف العائلة، والابن يفك ارتباطه فقط', async () => {
   const dad = await G('dad8'); await E.call(dad, 'POST', '/api/v2/family', { name: 'حذف' });
   const k = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ح', age: 10 })).j;
@@ -174,4 +165,25 @@ test('النسخ المؤقتة تُحذف بعد المهلة وعند حذف �
   assert.equal((await E.call(dad, 'DELETE', '/api/v2/kids/' + k.id)).r.status, 200); assert.equal(relayFiles(), before, 'حذف الولد يحذف تسجيله');
   const k2 = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'و', age: 10 })).j; await upload(dad, k2.id, Buffer.alloc(50, 3)); assert.equal(relayFiles(), before + 1);
   assert.equal((await E.call(dad, 'DELETE', '/api/v2/account', { confirm: 'حذف' })).r.status, 200); assert.equal(relayFiles(), before, 'حذف الحساب يحذف تسجيلاته');
+});
+
+test('عقد وحدة الكلمة: رمز موقّع قصير العمر، وحدث إنجاز موقّع يدخل النقاط ولا يتكرر', async () => {
+  const dad = await G('dad11'); await E.call(dad, 'POST', '/api/v2/family', { name: 'كلمة' });
+  const k = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ي', age: 10, habits: ['ayah', 'word'] })).j;
+  assert.equal((await E.j('/api/auth/config')).j.kalimati, true);
+  const tk = (await E.call(dad, 'GET', `/api/v2/kids/${k.id}/habit-token?habit=word`)).j;
+  assert.match(tk.url, /^https:\/\/kalimati\.example\/\?t=/);
+  const token = decodeURIComponent(tk.url.split('t=')[1]), [p, sig] = token.split('.'), secret = fsx.readFileSync(pathx.join(E.dir, 'habit_secret'), 'utf8').trim();
+  assert.equal(crypto.createHmac('sha256', secret).update(p).digest('base64url'), sig, 'توقيع الرمز صحيح');
+  const body = JSON.parse(Buffer.from(p, 'base64url')); assert.equal(body.k, k.id); assert.equal(body.h, 'word'); assert.ok(body.e > Date.now() && body.e < Date.now() + 11 * 60e3);
+  const noWord = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ز', age: 10 })).j; assert.equal((await E.call(dad, 'GET', `/api/v2/kids/${noWord.id}/habit-token?habit=word`)).r.status, 503, 'العادة غير مسندة');
+  const today = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
+  const post = (obj, s) => { const raw = JSON.stringify(obj); return fetch(E.base + '/api/v2/habit-events', { method: 'POST', headers: { 'content-type': 'application/json', 'x-signature': s || crypto.createHmac('sha256', secret).update(raw).digest('hex') }, body: raw }); };
+  assert.equal((await post({ kidId: k.id, habit: 'word', date: today, units: 1 }, 'bad')).status, 401, 'توقيع خاطئ');
+  assert.equal((await post({ kidId: k.id, habit: 'word', date: today, units: 1 })).status, 200);
+  assert.equal((await post({ kidId: k.id, habit: 'word', date: today, units: 1 })).status, 200, 'تكرار الحدث آمن');
+  assert.equal((await post({ kidId: 'nope', habit: 'word', date: today })).status, 404);
+  assert.equal((await post({ kidId: k.id, habit: 'xxx', date: today })).status, 400);
+  const st = (await E.call(dad, 'GET', `/api/v2/kids/${k.id}/state`)).j;
+  assert.equal(st.points.pointsToday, 50, 'كلمة اليوم = نصف نقاط اليوم مع آية اليوم'); assert.equal(st.recent[6].pts, 50);
 });

@@ -11,14 +11,12 @@ before(async () => {
 });
 after(() => E && E.stop());
 
-test('نقل عائلة قديمة (رابط الأب) إلى حساب ثم الدخول به لاحقاً', async () => {
-  const pt = await E.newFamily();
-  const { cb } = await E.login('google', { link: pt, sub: 'legacy' }); assert.equal(cb.status, 302);
-  const t = E.ticket(cb); const r = (await E.redeem(t)).j;
-  assert.equal(r.parent, pt); assert.equal(r.role, 'guardian'); assert.ok(r.session);
-  assert.equal((await E.redeem(t)).r.status, 400, 'التذكرة تُستعمل مرة واحدة');
-  const again = await E.signIn('legacy'); assert.equal(again.parent, pt); assert.notEqual(again.session, r.session);
-  assert.equal((await E.j('/api/parent/' + pt)).j.linked, 1);
+test('دخول بهوية ثم عودة بالهوية نفسها: الحساب نفسه وجلسة جديدة', async () => {
+  const r1 = await E.signIn('returning'); const me1 = (await E.call(r1.session, 'GET', '/api/v2/me')).j;
+  const r2 = await E.signIn('returning'); const me2 = (await E.call(r2.session, 'GET', '/api/v2/me')).j;
+  assert.notEqual(r1.session, r2.session); assert.equal(me1.account.id, me2.account.id);
+  const { cb } = await E.login('google', { sub: 'ticket-once' }); const t = E.ticket(cb);
+  assert.equal((await E.redeem(t)).r.status, 200); assert.equal((await E.redeem(t)).r.status, 400, 'التذكرة تُستعمل مرة واحدة');
 });
 
 test('هوية جديدة تفتح حساباً بلا دور (لا رفض «غير مرتبط»)', async () => {
@@ -27,15 +25,8 @@ test('هوية جديدة تفتح حساباً بلا دور (لا رفض «غ�
   const me = await E.call(s.session, 'GET', '/api/v2/me'); assert.equal(me.j.onboarding, 'family');
 });
 
-test('عائلة مرتبطة بحساب لا تُنقل لحساب آخر', async () => {
-  const pt1 = await E.newFamily(), pt2 = await E.newFamily();
-  assert.equal((await E.login('google', { link: pt1, sub: 'shared' })).cb.status, 302);
-  assert.equal((await E.login('google', { link: pt2, sub: 'shared' })).cb.status, 409);
-});
-
 test('تدفق التطبيق يعيد صفحة تفتح المخطط thabat://', async () => {
-  const pt = await E.newFamily();
-  const { cb } = await E.login('google', { link: pt, app: true, sub: 'appuser' });
+  const { cb } = await E.login('google', { app: true, sub: 'appuser' });
   assert.equal(cb.status, 200); assert.match(await cb.text(), /thabat:\/\/auth\?t=/);
 });
 
@@ -46,25 +37,18 @@ test('رفض: nonce خاطئ، رمز خاطئ، state مجهول', async () => 
 });
 
 test('Apple: client_secret بتوقيع ES256 صحيح والدخول عبر form_post', async () => {
-  const pt = await E.newFamily();
-  const { cb } = await E.login('apple', { link: pt, sub: 'apl' }); assert.equal(cb.status, 302);
+  const { cb } = await E.login('apple', { sub: 'apl' }); assert.equal(cb.status, 302);
   const [h, b, s] = E.getSecret().split('.'); const head = JSON.parse(Buffer.from(h, 'base64url')), body = JSON.parse(Buffer.from(b, 'base64url'));
   assert.equal(head.alg, 'ES256'); assert.equal(head.kid, 'KEY1234567'); assert.equal(body.iss, 'TEAM123456'); assert.equal(body.sub, 'net.test.svc');
   assert.ok(crypto.verify('sha256', Buffer.from(h + '.' + b), { key: E.ec.publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(s, 'base64url')));
 });
 
-test('حذف الحساب (القديم) يمسح العائلة ويشترط التأكيد', async () => {
-  const pt = await E.newFamily();
-  assert.equal((await E.call('', 'DELETE', '/api/parent/' + pt + '/account', { confirm: 'لا' })).r.status, 400);
-  assert.equal((await E.call('', 'DELETE', '/api/parent/' + pt + '/account', { confirm: 'حذف' })).r.status, 200);
-  assert.equal((await E.j('/api/parent/' + pt)).r.status, 404);
-});
-
 test('الروابط العميقة والصفحات المطلوبة للمتجرين', async () => {
   const a = (await E.j('/.well-known/apple-app-site-association')).j;
-  assert.deepEqual(a.applinks.details[0].appIDs, ['TEAMPUB123.net.wardyat.thabat']);
+  assert.deepEqual(a.applinks.details[0].appIDs, ['TEAMPUB123.net.wardyat.thabat']); assert.deepEqual(a.applinks.details[0].components, [{ '/': '/i/*' }], 'روابط الدعوة فقط');
   const l = (await E.j('/.well-known/assetlinks.json')).j; assert.equal(l[0].target.package_name, 'net.wardyat.thabat'); assert.deepEqual(l[0].target.sha256_cert_fingerprints, ['AA:BB']);
-  for (const p of ['/app', '/privacy', '/delete', '/auth/done']) assert.equal((await fetch(E.base + p)).status, 200, p);
+  for (const p of ['/app', '/privacy', '/delete', '/auth/done', '/i/abc', '/manifest.webmanifest']) assert.equal((await fetch(E.base + p)).status, 200, p);
+  for (const p of ['/p/abc', '/k/abc', '/api/parent/x', '/api/kid/x', '/admin/new-family']) assert.notEqual((await fetch(E.base + p)).status, 200, 'أُزيل المسار القديم ' + p);
   const cfg = (await E.j('/api/auth/config')).j; assert.ok(cfg.google && cfg.apple && cfg.signup);
 });
 

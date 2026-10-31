@@ -15,20 +15,19 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Noto+Naskh+Arabic:wght@400;700&display=swap">
 <link rel="stylesheet" href="/app.css?v=20261031c">
 <link rel="stylesheet" href="/frame.css?v=20261031c">
-<script>if(!/^\/lesson\//.test(location.pathname))document.head.insertAdjacentHTML('beforeend','<link rel="manifest" href="/manifest/k/'+location.pathname.split('/')[2]+'.json">')</script>
 </head>
 <body>
 <div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
-<script src="/common.js?v=20261101g"></script>
+<script src="/common.js?v=20261101h"></script>
 <script src="/native.js?v=20261101b"></script>
-<script src="/rec.js?v=20261101g"></script>
+<script src="/rec.js?v=20261101h"></script>
 <script src="/mushaf.js?v=20261031c"></script>
 <script>
 try { screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait').catch(() => {}); } catch (_) {}
 const TOKEN = location.pathname.split('/')[2];
-const V2 = location.pathname.startsWith('/lesson/');   // الوضع الجديد: TOKEN = رقم ملف الولد والجلسة من الحساب
-const stateApi = () => V2 ? 'v2/kids/' + TOKEN + '/state' : 'kid/' + TOKEN;
-const resultApi = () => V2 ? 'v2/kids/' + TOKEN + '/result' : 'kid/' + TOKEN + '/result';
+const V2 = true;   // TOKEN = رقم ملف الولد والجلسة من الحساب (لا روابط رموز قديمة)
+const stateApi = () => 'v2/kids/' + TOKEN + '/state';
+const resultApi = () => 'v2/kids/' + TOKEN + '/result';
 const app = $('#app');
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let S = null;            // حالة الولد من الخادم
@@ -124,45 +123,7 @@ function startV2() {
 }
 
 
-function home() {
-  if (V2) { location.href = '/app'; return; }
-  const nodes = [];
-  const hero = el('div', { class: 'hero' },
-    el('div', {}, 'السلام عليكم يا ' + S.name),
-    el('div', { class: 'big-num' }, AR_DIGITS(S.streak)),
-    el('div', {}, S.streak === 1 ? 'يوم متواصل' : 'أيام متواصلة'));
-  if (S.reward) {
-    hero.append(el('div', { class: 'bar' }, el('i', { style: `width:${Math.round(100 * S.rewardProg / S.rewardDays)}%` })),
-      el('div', { class: 'mute' }, `الجائزة بعد ${AR_DIGITS(S.rewardDays)} أيام: ${S.reward} (${AR_DIGITS(S.rewardProg)}/${AR_DIGITS(S.rewardDays)})`));
-  }
-  nodes.push(hero);
-
-  if (S.newToday) {
-    nodes.push(el('div', { class: 'card' }, el('h2', {}, 'أحسنت! أتممت آية اليوم ✅'),
-      el('p', { class: 'mute' }, S.pending.length ? 'بانتظار أن يؤكد أبوك تسميعك.' : 'إن أردت المزيد فاختر أدناه.'),
-      S.todayUnit ? el('button', { class: 'btn ghost', onclick: () => lesson(S.todayUnit, 'practice') }, `🔁 درّب آية اليوم: ${S.todayUnit.name} ${S.todayUnit.i}`) : null,
-      S.next && S.todayCount < 4 ? el('button', { class: 'btn gold', onclick: () => lesson(S.next, 'new', true) }, `➕ آية إضافية: ${S.next.name} ${S.next.i}`) : null));
-  } else if (S.next) {
-    nodes.push(el('div', { class: 'card' },
-      el('div', { class: 'mute' }, 'آية اليوم'),
-      el('h1', {}, `سورة ${S.next.name} — الآية ${AR_DIGITS(S.next.i)}`),
-      el('button', { class: 'btn gold', onclick: () => lesson(S.next, 'new') }, 'ابدأ الآن')));
-  } else {
-    nodes.push(el('div', { class: 'card' }, el('h2', {}, 'ما شاء الله! أتممت كل ما في خطتك 🌟'), el('p', { class: 'mute' }, 'اطلب من أبيك خطة جديدة.')));
-  }
-  if (S.reviews.length) {
-    nodes.push(el('div', { class: 'card' }, el('h2', {}, 'مراجعة اليوم'),
-      ...S.reviews.map(u => el('button', { class: 'btn ghost', onclick: () => lesson(u, 'review') }, `راجع: ${u.name} ${AR_DIGITS(u.i)}`))));
-  }
-  nodes.push(el('p', { class: 'mute say' }, `حفظتَ ${AR_DIGITS(S.memorized)} آية بفضل الله`));
-  if (window.NATIVE && window.setDailyReminder) {   // تذكير يومي محلي (داخل التطبيق فقط)
-    const saved = (() => { try { return localStorage.getItem('ayah_rem'); } catch (_) { return null; } })();
-    const t = el('input', { type: 'time', value: saved || S.time || '06:30' }), msg = el('div', { class: 'mute say' }, saved ? `التذكير اليومي: ${saved}` : '');
-    nodes.push(el('div', { class: 'card' }, el('h2', {}, '⏰ تذكير يومي'), t,
-      el('button', { class: 'btn ghost', onclick: async () => { msg.textContent = (await setDailyReminder(t.value)) ? `✓ سأذكّرك كل يوم ${t.value}` : 'اسمح بالإشعارات من إعدادات الجوال'; } }, saved ? 'تغيير الوقت' : 'فعّل التذكير'), msg));
-  }
-  show(...nodes);
-}
+function home() { location.href = '/app'; }
 
 // ───── الدرس ─────
 // ١ اعرف مكانها في صفحة المصحف ← ٢ حلقة استماع وترديد متواصلة (يخفى النص تدريجياً في الصفحة نفسها) ← ٣ تسميع بالصوت
@@ -200,29 +161,19 @@ function lesson(u, kind, extra) {
   // خطة الحلقة: ١٠ استماعات متتالية تلقائياً ثم ١٠ ترديدات (القارئ يقرأ والطفل يردّد) ثم التسميع.
   // الآية الطويلة (>12 كلمة): مقطعاً مقطعاً ثم كاملة. سقف الزمن ≈ 5 دقائق (التقليل حتى 5)
   function makePlan() {
-    const info = PLAN[u.key] || {}, CAP = 300;
+    const info = PLAN[u.key] || {};
     const lvOf = (r, n) => r < Math.ceil(n * .25) ? 0 : r < Math.ceil(n * .5) ? 1 : r < Math.ceil(n * .75) ? 2 : 3;
-    const dOf = e => (e.w ? e.fe - e.fs : (e.slow ? info.ds : info.df)) || 4;
-    const total = p => p.reduce((t, e) => t + dOf(e) + (e.listen ? .4 : Math.max(1.2, dOf(e))), 0);
-    if (info.ch) {
-      const build = (rc, rf) => {
-        const out = [];
-        info.ch.forEach(([w0, w1, fs, fe], c) => {
-          for (let i = 0; i < rc; i++) out.push({ slow: false, w: [w0, w1], fs, fe, lv: lvOf(i, rc), tag: `الجزء ${c + 1}/${info.ch.length}`, n: i + 1, of: rc });
-        });
-        for (let i = 0; i < rf; i++) out.push({ slow: false, w: null, lv: Math.min(3, i + 1), tag: 'كاملة', n: i + 1, of: rf });
-        return out;
-      };
-      let rc = 5, rf = 3, p = build(rc, rf);
-      while (total(p) > CAP && (rc > 3 || rf > 2)) { if (rc > 3) rc--; else rf--; p = build(rc, rf); }
-      return p;
+    const N = 10;   // لكل مقطع صوتي: عشر استماعات متتالية تلقائياً ثم عشر ترديدات (القارئ يقرأ ثم الطفل)
+    const rounds = (w, fs, fe, tag, g, slowFirst) => [
+      ...Array.from({ length: N }, (_, i) => ({ slow: slowFirst && i === 0, listen: true, w, fs, fe, g, lv: 0, tag, n: i + 1, of: N })),
+      ...Array.from({ length: N }, (_, i) => ({ slow: false, w, fs, fe, g, lv: lvOf(i, N), tag, n: i + 1, of: N }))];
+    if (info.ch) {   // الآية الطويلة: التكرار على كل مقطع (حدوده علامات الوقف) لا على الآية كاملة، ثم ربط بالآية كاملة ثلاث مرات
+      const out = []; info.ch.forEach(([w0, w1, fs, fe], c) => out.push(...rounds([w0, w1], fs, fe, `الجزء ${c + 1}/${info.ch.length}`, c, false)));
+      const g = info.ch.length;
+      out.push(...Array.from({ length: 3 }, (_, i) => ({ slow: false, listen: true, w: null, g, lv: 0, tag: 'كاملة', n: i + 1, of: 3 })), ...Array.from({ length: 3 }, (_, i) => ({ slow: false, w: null, g, lv: Math.min(3, i + 1), tag: 'كاملة', n: i + 1, of: 3 })));
+      return out;
     }
-    const build = n => [
-      ...Array.from({ length: n }, (_, i) => ({ slow: i === 0, listen: true, w: null, lv: 0, tag: 'استماع', n: i + 1, of: n })),
-      ...Array.from({ length: n }, (_, i) => ({ slow: false, w: null, lv: lvOf(i, n), tag: 'ردّد', n: i + 1, of: n }))];
-    let n = 10, p = build(n);
-    while (total(p) > CAP && n > 5) { n--; p = build(n); }
-    return p;
+    return rounds(null, undefined, undefined, '', 0, true);
   }
 
   function stepLoop() {
@@ -264,8 +215,15 @@ function lesson(u, kind, extra) {
       tick();
     }
     const banner = el('div', { class: 'turn' }, '');
-    const dots = el('div', { class: 'dots2' }, plan.map(() => el('i')));
-    const setDots = k => Array.from(dots.children).forEach((d, j) => { d.className = j < k ? 'on' : j === k ? 'cur' : ''; });
+    // نقاط التقدّم للمجموعة الحالية فقط (جزء أو كاملة): لا عشرات النقاط الصغيرة
+    const dots = el('div', { class: 'dots2' }), gStart = {}; plan.forEach((e, i) => { if (gStart[e.g] === undefined) gStart[e.g] = i; });
+    let curG = -1;
+    const setDots = k => {
+      const g = k >= plan.length ? plan[plan.length - 1].g : plan[k].g;
+      if (g !== curG) { curG = g; dots.replaceChildren(...plan.filter(e => e.g === g).map(() => el('i'))); }
+      const idx = k >= plan.length ? 1e9 : k - gStart[g];
+      Array.from(dots.children).forEach((d, j) => { d.className = j < idx ? 'on' : j === idx ? 'cur' : ''; });
+    };
     const main = el('button', { class: 'btn', disabled: true, onclick: () => main.onact && main.onact() }, '…');
     const pause = el('button', { class: 'ibtn', 'aria-label': 'إيقاف مؤقت', onclick: toggle }, '⏸');
     let r = 0, playing = false, skip = null, live = null;
@@ -359,7 +317,7 @@ function lesson(u, kind, extra) {
       while (r < plan.length && id === LOOP) {
         const e = plan[r];
         apply(e); if (pg.box.c) pg.box.c.el.dataset.hl = e.lv; hit(() => false); setDots(r);
-        setTurn(false, e.listen ? '🔊 استمع للقارئ' : '🔊 اسمع القارئ ثم اقرأ');
+        setTurn(false, (e.listen ? '🔊 استمع للقارئ' : '🔊 اسمع القارئ ثم اقرأ') + (/^(الجزء|كاملة)/.test(e.tag) ? ' — ' + e.tag : ''));
         const d = await playOnce(e, id);
         if (id !== LOOP) return;
         FID++; mark(-1);
@@ -398,7 +356,7 @@ function lesson(u, kind, extra) {
     let rec = null, heardAlts = [];
     // تسجيل صوت الولد أثناء التسميع (V2 فقط): يُحفظ على جهازه 14 يوماً، وتُرسل نسخة مؤقتة للأب إن بقي التسميع معلّقاً
     const canRec = V2 && kind !== 'practice' && S.recordVoice !== false && Rec.supported();
-    let recorder = null, lastBlob = null, recErr = '';
+    let recorder = null, lastBlob = null, recErr = '', noConc = !!window.NATIVE;   // التسجيل المتزامن مع التعرّف يُعطَّل تلقائياً إن تعارض الميكروفون (وفي التطبيق المثبّت دائماً)
     const startRec = async () => { if (!canRec) return; lastBlob = null; recorder = Rec.recorder(); try { await recorder.start(); recErr = ''; } catch (e) { recorder = null; recErr = e && e.name || 'err'; } };
     const stopRec = async () => { if (!recorder) return; try { lastBlob = await recorder.stop(); } catch (_) {} recorder = null; };
 
@@ -407,7 +365,7 @@ function lesson(u, kind, extra) {
       if (!SR) return toggleRecordOnly();
       if (rec) { rec.stop(); return; }
       stopAudio(); heardAlts = []; hideAll(); actions.replaceChildren();
-      await startRec();
+      if (!noConc) await startRec();
       rec = new SR(); rec.lang = 'ar-SA'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 3;
       rec.onresult = ev => {
         heardAlts = [];
@@ -416,9 +374,10 @@ function lesson(u, kind, extra) {
       };
       rec.onerror = ev => {
         L.srErr = ev.error || 'unknown';
+        if (recorder && ['audio-capture', 'not-allowed', 'aborted', 'service-not-allowed'].includes(ev.error)) { noConc = true; stopRec(); }
         const why = { 'not-allowed': 'اسمح للمتصفح باستخدام الميكروفون ثم أعد المحاولة.', 'service-not-allowed': 'خدمة التعرّف على الكلام غير مفعّلة في جهازك (فعّل الإملاء الصوتي في إعدادات الجوال).', 'no-speech': 'لم أسمع صوتاً. قرّب الجوال وأعد المحاولة.', 'audio-capture': 'لا أجد ميكروفوناً في هذا الجهاز.', 'network': 'يلزم اتصال بالإنترنت للتعرّف على الصوت.', 'language-not-supported': 'جهازك لا يدعم التعرّف على العربية.' };
         msg.textContent = why[ev.error] || 'لم أسمعك جيداً، أعد المحاولة.';
-        L.fails++; if (L.fails >= 2) { actions.replaceChildren(parentBtn()); }
+        L.fails++; if (L.fails >= 2) { actions.replaceChildren(...fb()); }
       };
       rec.onend = async () => { rec = null; mic.classList.remove('live'); await stopRec(); evaluate(); };
       mic.classList.add('live'); msg.textContent = '';
@@ -433,7 +392,7 @@ function lesson(u, kind, extra) {
       await startRec(); if (recorder) mic.classList.add('live'); else msg.textContent = 'لم أستطع فتح الميكروفون. اسمح له من إعدادات المتصفح.';
     }
     async function evaluate() {
-      if (!heardAlts.some(Boolean)) { if (!L.srErr) { L.fails++; msg.textContent = 'لم أسمع شيئاً. أعد.'; if (L.fails >= 2) actions.replaceChildren(parentBtn()); } return; }
+      if (!heardAlts.some(Boolean)) { if (!L.srErr) { if (lastBlob) noConc = true; L.fails++; msg.textContent = 'لم أسمع شيئاً. أعد.'; if (L.fails >= 2) actions.replaceChildren(...fb()); } return; }
       const best = heardAlts.map(h => compare(u.c, h)).sort((a, b) => b.score - a.score)[0];
       const pct = Math.round(best.score * 100);
       let hits = best.hit;
@@ -451,8 +410,18 @@ function lesson(u, kind, extra) {
         L.fails++;
         msg.textContent = `${pct}% — أعد المحاولة (تحتاج ${Math.round(S.threshold * 100)}%)`;
         actions.replaceChildren(playBtn('🔊 استمع ثم أعد'));
-        if (L.fails >= 2) actions.append(parentBtn());
+        if (L.fails >= 2) actions.replaceChildren(playBtn('🔊 استمع ثم أعد'), ...fb());
       }
+    }
+    // بعد محاولتين فاشلتين: سجّل تسميعك ليسمعه أبوك (بلا تعرّف)، أو أخبر أباك مباشرة
+    function fb() {
+      const out = [];
+      if (canRec && kind === 'new') out.push(el('button', { class: 'btn ghost', onclick: async () => {
+        stopAudio(); noConc = true; actions.replaceChildren(); msg.textContent = 'جارٍ التسجيل… سمّع الآية ثم اضغط «إنهاء التسجيل».';
+        await startRec(); if (!recorder) { msg.textContent = 'لم أستطع فتح الميكروفون. اسمح له من إعدادات المتصفح.'; actions.replaceChildren(parentBtn()); return; }
+        actions.replaceChildren(el('button', { class: 'btn', onclick: async () => { await stopRec(); if (lastBlob) { msg.textContent = 'تم التسجيل. استمع إليه ثم أرسله لأبيك.'; actions.replaceChildren(el('button', { class: 'btn ghost', onclick: () => { stopAudio(); audio = new Audio(URL.createObjectURL(lastBlob)); audio.play().catch(() => {}); } }, 'استمع لتسجيلك'), parentBtn('أرسلتها لأبي (مع التسجيل)')); } else { msg.textContent = 'لم يُلتقط صوت.'; actions.replaceChildren(...fb()); } } }, 'إنهاء التسجيل'));
+      } }, 'سجّل تسميعك لأبيك'));
+      out.push(parentBtn()); return out;
     }
     function parentBtn(txt) {
       return el('button', { class: 'btn ghost', onclick: () => { if (kind === 'new' && !confirm('هل أبوك بجانبك الآن ليسمع تسميعك؟ لن تُحسب الآية إلا بعد أن يؤكد أنه سمعها.')) return; finish(kind === 'new' ? 'pending' : 'self', 0); } },
