@@ -11,7 +11,7 @@ const el = (tag, attrs = {}, ...kids) => {
   return e;
 };
 async function api(path, method = 'GET', body) {
-  const r = await fetch('/api/' + path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch('/api/' + path, { method, headers: { 'Content-Type': 'application/json', ...(() => { try { const s = localStorage.getItem('ayah_session'); return s ? { 'X-Session': s } : {}; } catch (_) { return {}; } })() }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(j.error || 'خطأ'), { status: r.status });
   return j;

@@ -80,6 +80,7 @@ function mount(ctx) {
   async function finish(res, st, ident) {
     let f, link = st.link ? ctx.famByParent(st.link) : null;
     if (st.link && !link) return html(res, 400, 'خطأ', '<h1>رابط الأب غير صحيح</h1>');
+    if (link && ctx.REQUIRE_LOGIN && (link.owners || []).length && !(link.sessions || []).includes(ctx.shaOf(st.sess || ''))) return html(res, 401, 'سجّل الدخول', '<h1>سجّل الدخول أولاً</h1><p>لإضافة حساب آخر لهذه العائلة ادخل بحسابك المرتبط أولاً.</p>');
     const mine = famOf(ident);
     if (link) {
       if (mine && mine !== link) return html(res, 409, 'الحساب مرتبط', '<h1>هذا الحساب مرتبط بعائلة أخرى</h1><p>لا يمكن ربطه بهذه العائلة.</p>');
@@ -104,7 +105,7 @@ function mount(ctx) {
       if (!configured(prov)) return html(res, 503, 'غير مفعّل', `<h1>الدخول بـ ${prov === 'google' ? 'Google' : 'Apple'} لم يُفعَّل بعد</h1><p>سيُفعَّل قريباً.</p>`);
       const link = url.searchParams.get('link') || '';
       sweep(STATES); const state = rid(), nonce = rid(12);
-      STATES.set(state, { prov, nonce, app: url.searchParams.get('app') === '1', link, exp: Date.now() + 600e3 });
+      STATES.set(state, { prov, nonce, app: url.searchParams.get('app') === '1', link, sess: url.searchParams.get('s') || '', exp: Date.now() + 600e3 });
       const c = CFG[prov], q = new URLSearchParams({
         client_id: c.id, redirect_uri: `${ORIGIN}/auth/callback/${prov}`, response_type: 'code', state, nonce,
         scope: prov === 'google' ? 'openid' : 'openid', ...(prov === 'apple' ? { response_mode: 'form_post' } : {}) });
@@ -127,7 +128,9 @@ function mount(ctx) {
     if (p === '/api/auth/redeem' && req.method === 'POST') {
       const b = await ctx.readBody(req), t = TICKETS.get(String(b.t || '')); TICKETS.delete(String(b.t || ''));
       if (!t || t.exp < Date.now()) return send(res, 400, { error: 'انتهت صلاحية الدخول' });
-      return send(res, 200, { parent: t.parent });
+      const f = ctx.famByParent(t.parent); if (!f) return send(res, 400, { error: 'العائلة غير موجودة' });
+      const session = rid(24); f.sessions = [...(f.sessions || []).slice(-9), ctx.shaOf(session)]; await save();
+      return send(res, 200, { parent: t.parent, session });
     }
     if (p === '/api/auth/config' && req.method === 'GET') return send(res, 200, { google: configured('google'), apple: configured('apple'), signup: process.env.ALLOW_SIGNUP === '1' });
     return false;

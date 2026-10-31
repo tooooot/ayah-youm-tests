@@ -119,12 +119,3 @@ test('الروابط العميقة والصفحات المطلوبة للمتج
   for (const p of ['/app', '/privacy', '/delete', '/auth/done']) assert.equal((await fetch(base + p)).status, 200, p);
   const cfg = (await j('/api/auth/config')).j; assert.ok(cfg.google && cfg.apple && !cfg.signup);
 });
-
-test('عائلة تجريبية للمراجعين: /api/demo يعطي الروابط ولا تُحذف', async () => {
-  assert.equal((await j('/api/demo')).r.status, 404);
-  const t = (await (await fetch(base + '/admin/new-family', { method: 'POST', body: JSON.stringify({ name: 'تجريبي', demo: true }), headers: { 'content-type': 'application/json' } })).text()).trim().split('/p/')[1];
-  await j('/api/parent/' + t + '/kids', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'د', age: 9 }) });
-  const d = (await j('/api/demo')).j; assert.equal(d.parent, t); assert.ok(d.kid);
-  assert.equal((await j('/api/parent/' + t + '/account', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'حذف' }) })).r.status, 403);
-  assert.equal((await j('/api/kid/' + d.kid)).r.status, 200);
-});

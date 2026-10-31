@@ -16,8 +16,8 @@
 </head>
 <body>
 <div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
-<script src="/common.js"></script>
-<script src="/native.js?v=20261101a"></script>
+<script src="/common.js?v=20261101b"></script>
+<script src="/native.js?v=20261101b"></script>
 <script src="/mushaf.js"></script>
 <script>
 const PT = location.pathname.split('/')[2];
@@ -29,7 +29,7 @@ async function load() {
     await Mushaf.init();
     if (!SURAHS.length) SURAHS = (await (await fetch('/data/quran.json')).json()).map(s => ({ n: s.n, name: s.name }));
     D = await api('parent/' + PT); render();
-  } catch (e) { app.replaceChildren(el('div', { class: 'card' }, el('h2', {}, 'الرابط غير صحيح'))); }
+  } catch (e) { if (e.status === 401) return showLogin(); app.replaceChildren(el('div', { class: 'card' }, el('h2', {}, 'الرابط غير صحيح'))); }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && D) load(); });
 
@@ -101,7 +101,15 @@ function kidCard(k) {
   return card;
 }
 
-const authGo = prov => nativeBrowser('/auth/start/' + prov + '?link=' + encodeURIComponent(PT) + (window.NATIVE ? '&app=1' : ''));
+const SESS = () => { try { return localStorage.getItem('ayah_session') || ''; } catch (_) { return ''; } };
+const authGo = prov => nativeBrowser('/auth/start/' + prov + '?link=' + encodeURIComponent(PT) + '&s=' + encodeURIComponent(SESS()) + (window.NATIVE ? '&app=1' : ''));
+function showLogin() {   // العائلة مرتبطة بحساب: لا يكفي الرابط، يلزم تسجيل الدخول
+  const go = prov => () => nativeBrowser('/auth/start/' + prov + (window.NATIVE ? '?app=1' : ''));
+  app.replaceChildren(el('div', { class: 'card' }, el('h2', {}, 'سجّل الدخول لمتابعة أولادك'),
+    el('p', { class: 'mute' }, 'هذه العائلة محمية بحسابك. ادخل بالحساب الذي ربطته.'),
+    el('button', { class: 'btn', onclick: go('google') }, 'الدخول بـ Google'),
+    el('button', { class: 'btn ghost', onclick: go('apple') }, 'الدخول بـ Apple')));
+}
 function accountCard() {
   const c = el('div', { class: 'card' }, el('h2', {}, 'الحساب'));
   if (D.linked) c.append(el('p', { class: 'mute' }, '✓ حسابك مرتبط بـ Google/Apple: يمكنك الدخول من أي جهاز بالحساب نفسه.'));
@@ -110,7 +118,7 @@ function accountCard() {
     el('button', { class: 'btn ghost', 'data-p': 'apple', onclick: () => authGo('apple') }, 'ربط حسابي بـ Apple'));
   fetch('/api/auth/config').then(r => r.json()).then(cfg => c.querySelectorAll('[data-p]').forEach(b => { if (!cfg[b.dataset.p]) b.style.display = 'none'; })).catch(() => {});
   c.append(
-    el('button', { class: 'btn ghost', onclick: () => { try { localStorage.removeItem('ayah_parent'); } catch (_) {} location.href = '/app'; } }, 'خروج من هذا الجهاز'),
+    el('button', { class: 'btn ghost', onclick: () => { try { localStorage.removeItem('ayah_parent'); localStorage.removeItem('ayah_session'); } catch (_) {} location.href = '/app'; } }, 'خروج من هذا الجهاز'),
     el('button', { class: 'btn ghost', style: 'color:#c0392b', onclick: async () => {
       if (!confirm('سيُحذف حسابك وكل أولادك وسجلاتهم نهائياً ولا يمكن التراجع. متابعة؟')) return;
       const w = prompt('للتأكيد اكتب كلمة: حذف'); if (w !== 'حذف') return;
