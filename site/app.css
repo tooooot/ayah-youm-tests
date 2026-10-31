@@ -139,3 +139,4 @@ body.tm .zoombox.mine{animation:glow 1.1s infinite}
 .quran.big[data-hl="1"] .w.cur{background:#ffb27a;box-shadow:0 0 0 3px #ffb27a}
 .quran.big[data-hl="2"] .w.cur{background:#8fd3ff;box-shadow:0 0 0 3px #8fd3ff}
 .quran.big[data-hl="3"] .w.cur{background:#ffa6c9;box-shadow:0 0 0 3px #ffa6c9}
+.dock .btn:disabled{visibility:hidden}
