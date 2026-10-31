@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>آية اليوم</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0f3d33">
+<link rel="icon" href="/icon-192.png">
+<link rel="stylesheet" href="/app.css">
+<style>body{background:linear-gradient(160deg,#0f3d33,#1d6b58);color:#fff;min-height:100vh}.wrap{padding-top:12vh;text-align:center}.logo{width:104px;height:104px;border-radius:24px;margin:0 auto 14px;display:block}
+.btn.apple{background:#000;color:#fff}.btn.google{background:#fff;color:#222}.mute{color:#cfe3da}</style>
+</head>
+<body>
+<div class="wrap" id="app"><img class="logo" src="/icon-192.png" alt=""><h1>آية اليوم</h1><p class="mute">جارٍ التحميل…</p></div>
+<script src="/common.js?v=20261101a"></script>
+<script src="/native.js?v=20261101a"></script>
+<script>
+const app = $('#app');
+(async () => {
+  const q = new URLSearchParams(location.search);
+  try { if (q.get('reset')) { localStorage.removeItem('ayah_kid'); localStorage.removeItem('ayah_parent'); } } catch (_) {}
+  let kid = null, par = null;
+  try { kid = localStorage.getItem('ayah_kid'); par = localStorage.getItem('ayah_parent'); } catch (_) {}
+  if (par) return location.replace('/p/' + par);   // جهاز الأب أولاً (قد يفتح رابط ابنه للتجربة)
+  if (kid) return location.replace('/k/' + kid);
+  let cfg = { google: false, apple: false };
+  try { cfg = await api('auth/config'); } catch (_) {}
+  const go = prov => () => nativeBrowser('/auth/start/' + prov + (window.NATIVE ? '?app=1' : ''));
+  app.replaceChildren(el('img', { class: 'logo', src: '/icon-192.png', alt: '' }), el('h1', {}, 'آية اليوم'),
+    el('p', { class: 'mute' }, 'آية واحدة كل يوم، بتسميع وصوت ومراجعة متباعدة.'),
+    el('div', { class: 'card', style: 'color:#17352d;text-align:right' },
+      el('h2', {}, 'أنا الأب / الأم'),
+      cfg.google ? el('button', { class: 'btn google', onclick: go('google') }, 'الدخول بـ Google') : null,
+      cfg.apple ? el('button', { class: 'btn apple', onclick: go('apple') }, 'الدخول بـ Apple') : null,
+      !cfg.google && !cfg.apple ? el('p', { class: 'mute' }, 'الدخول بالحساب سيُفعَّل قريباً. يمكنك فتح رابط الأب الخاص بك مباشرة.') : null),
+    el('div', { class: 'card', style: 'color:#17352d;text-align:right' },
+      el('h2', {}, 'أنا الابن'),
+      el('p', { class: 'mute' }, 'افتح الرابط الذي أرسله لك أبوك، وسيفتح التطبيق على صفحتك مباشرة.')));
+})();
+</script>
+</body>
+</html>

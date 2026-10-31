@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تسجيل الدخول</title><meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body><div class="wrap"><div class="card"><h2 id="m">جارٍ تسجيل الدخول…</h2></div></div>
+<script src="/common.js?v=20261101a"></script>
+<script src="/native.js?v=20261101a"></script>
+<script>
+(async () => {
+  const t = new URLSearchParams(location.search).get('t');
+  try {
+    const r = await api('auth/redeem', 'POST', { t });
+    try { localStorage.setItem('ayah_parent', r.parent); } catch (_) {}
+    if (window.closeNativeBrowser) closeNativeBrowser();
+    location.replace('/p/' + r.parent);
+  } catch (e) { $('#m').textContent = e.message || 'تعذّر الدخول'; }
+})();
+</script></body></html>

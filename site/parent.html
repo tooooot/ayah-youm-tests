@@ -17,6 +17,7 @@
 <body>
 <div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
 <script src="/common.js"></script>
+<script src="/native.js?v=20261101a"></script>
 <script src="/mushaf.js"></script>
 <script>
 const PT = location.pathname.split('/')[2];
@@ -99,12 +100,31 @@ function kidCard(k) {
   return card;
 }
 
+const authGo = prov => nativeBrowser('/auth/start/' + prov + '?link=' + encodeURIComponent(PT) + (window.NATIVE ? '&app=1' : ''));
+function accountCard() {
+  const c = el('div', { class: 'card' }, el('h2', {}, 'الحساب'));
+  if (D.linked) c.append(el('p', { class: 'mute' }, '✓ حسابك مرتبط بـ Google/Apple: يمكنك الدخول من أي جهاز بالحساب نفسه.'));
+  else c.append(el('p', { class: 'mute' }, 'اربط حسابك كي تستعيد عائلتك إن فقدتَ الجوال أو الرابط.'),
+    el('button', { class: 'btn', onclick: () => authGo('google') }, 'ربط حسابي بـ Google'),
+    el('button', { class: 'btn ghost', onclick: () => authGo('apple') }, 'ربط حسابي بـ Apple'));
+  c.append(
+    el('button', { class: 'btn ghost', onclick: () => { try { localStorage.removeItem('ayah_parent'); } catch (_) {} location.href = '/app'; } }, 'خروج من هذا الجهاز'),
+    el('button', { class: 'btn ghost', style: 'color:#c0392b', onclick: async () => {
+      if (!confirm('سيُحذف حسابك وكل أولادك وسجلاتهم نهائياً ولا يمكن التراجع. متابعة؟')) return;
+      const w = prompt('للتأكيد اكتب كلمة: حذف'); if (w !== 'حذف') return;
+      try { await api('parent/' + PT + '/account', 'DELETE', { confirm: w }); try { localStorage.clear(); } catch (_) {} location.href = '/app'; } catch (e) { alert(e.message); }
+    } }, 'حذف حسابي وكل بيانات العائلة'),
+    el('p', { class: 'mute' }, el('a', { href: '/privacy' }, 'سياسة الخصوصية')));
+  return c;
+}
+
 function render() {
   const nodes = [el('h1', {}, 'متابعة ' + D.family),
     el('p', { class: 'mute' }, 'هذه الصفحة لك وحدك: لا تشارك رابطها. أعطِ كل ولد رابطه الخاص من زر «رابط الولد».')];
   if (!D.kids.length) nodes.push(el('div', { class: 'note' }, 'ابدأ بإضافة أولادك أدناه.'));
   D.kids.forEach(k => nodes.push(kidCard(k)));
   nodes.push(kidForm(null));
+  nodes.push(accountCard());
   nodes.push(el('p', { class: 'mute' }, 'الصوت: الحصري (المعلّم). التسميع بالصوت يعمل على Chrome في أندرويد وبعض إصدارات آيفون؛ وإن لم يعمل يضغط الولد «سمّعتها لأبي» وتؤكدها أنت هنا.'));
   app.replaceChildren(...nodes);
 }

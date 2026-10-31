@@ -168,7 +168,11 @@ async function api(req, res, url) {
     if (!f) return send(res, 404, { error: 'رابط غير صحيح' });
     const rest = p.slice(3);
     if (req.method === 'GET' && rest.length === 0)
-      return send(res, 200, { family: f.name, kids: f.kids.map(k => ({ ...kidState(k), token: k.token })), origin: ORIGIN });
+      return send(res, 200, { family: f.name, kids: f.kids.map(k => ({ ...kidState(k), token: k.token })), origin: ORIGIN, linked: (f.owners || []).length });
+    if (req.method === 'DELETE' && rest[0] === 'account') {   // حذف الحساب وكل بيانات العائلة نهائياً (شرط المتجرين)
+      if (body.confirm !== 'حذف') return send(res, 400, { error: 'اكتب «حذف» للتأكيد' });
+      db.families = db.families.filter(x => x !== f); await save(); return send(res, 200, { ok: true });
+    }
     if (req.method === 'POST' && rest[0] === 'kids' && rest.length === 1) {
       const c = cleanKid(body); if (!c.name) return send(res, 400, { error: 'الاسم مطلوب' });
       if (f.kids.length >= 8) return send(res, 400, { error: 'حد الأولاد 8' });
@@ -232,6 +236,10 @@ async function api(req, res, url) {
   return send(res, 404, { error: 'غير موجود' });
 }
 
+const authHandler = require('./auth').mount({ db, save, rid, today, ORIGIN, send, readBody, famByParent });
+const TEAM = process.env.APPLE_TEAM_PUB || '823299AJGN', BUNDLE = 'net.wardyat.ayahyoum';
+const PAGES = { '/app': 'app.html', '/auth/done': 'auth-done.html', '/privacy': 'privacy.html', '/delete': 'delete.html' };
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x');
@@ -245,6 +253,15 @@ const server = http.createServer(async (req, res) => {
       db.families.push(f); await save();
       return send(res, 200, `${ORIGIN}/p/${f.parentToken}\n`, 'text/plain; charset=utf-8');
     }
+    // الروابط العميقة: iOS Universal Links وAndroid App Links (بصمة التوقيع من البيئة)
+    if (p === '/.well-known/apple-app-site-association')
+      return send(res, 200, { applinks: { details: [{ appIDs: [`${TEAM}.${BUNDLE}`], components: [{ '/': '/k/*' }, { '/': '/p/*' }] }] } });
+    if (p === '/.well-known/assetlinks.json') {
+      const fp = (process.env.ANDROID_SHA256 || '').split(',').map(x => x.trim()).filter(Boolean);
+      return send(res, 200, [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: BUNDLE, sha256_cert_fingerprints: fp } }]);
+    }
+    if (PAGES[p]) return serveFile(req, res, path.join(SITE, PAGES[p]), 'no-store');
+    if (await authHandler(req, res, url, p) !== false) return;
     if (p.startsWith('/api/')) return await api(req, res, url);
     let m;
     if ((m = /^\/(p|k)\/([\w-]+)$/.exec(p))) return serveFile(req, res, path.join(SITE, m[1] === 'p' ? 'parent.html' : 'kid.html'), 'no-store');

@@ -20,6 +20,7 @@
 <body>
 <div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
 <script src="/common.js?v=20261031c"></script>
+<script src="/native.js?v=20261101a"></script>
 <script src="/mushaf.js?v=20261031c"></script>
 <script>
 try { screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait').catch(() => {}); } catch (_) {}
@@ -133,6 +134,12 @@ function home() {
       ...S.reviews.map(u => el('button', { class: 'btn ghost', onclick: () => lesson(u, 'review') }, `راجع: ${u.name} ${AR_DIGITS(u.i)}`))));
   }
   nodes.push(el('p', { class: 'mute say' }, `حفظتَ ${AR_DIGITS(S.memorized)} آية بفضل الله`));
+  if (window.NATIVE && window.setDailyReminder) {   // تذكير يومي محلي (داخل التطبيق فقط)
+    const saved = (() => { try { return localStorage.getItem('ayah_rem'); } catch (_) { return null; } })();
+    const t = el('input', { type: 'time', value: saved || S.time || '06:30' }), msg = el('div', { class: 'mute say' }, saved ? `التذكير اليومي: ${saved}` : '');
+    nodes.push(el('div', { class: 'card' }, el('h2', {}, '⏰ تذكير يومي'), t,
+      el('button', { class: 'btn ghost', onclick: async () => { msg.textContent = (await setDailyReminder(t.value)) ? `✓ سأذكّرك كل يوم ${t.value}` : 'اسمح بالإشعارات من إعدادات الجوال'; } }, saved ? 'تغيير الوقت' : 'فعّل التذكير'), msg));
+  }
   show(...nodes);
 }
 
@@ -268,7 +275,7 @@ function lesson(u, kind, extra) {
     }
     // طلب إذن الميكروفون مرة واحدة قبل البدء (حتى لا تظهر نافذة الإذن وسط الدور)؛ يبقى الإذن للتعرّف على الكلام
     async function askMic() {
-      if (!SR || window.__fast || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+      if (!SR || window.__fast || window.NATIVE || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;   // داخل التطبيق: إضافة التعرّف الأصلية تطلب الإذن بنفسها
       try { (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach(t => t.stop()); } catch (_) {}
     }
     const tone = (hz, ms = 140, delay = 0) => {
