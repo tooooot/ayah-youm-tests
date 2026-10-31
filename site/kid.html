@@ -49,18 +49,51 @@ function setDock(zoomNodes, ...nodes) {
   const zoom = el('div', { class: 'zoombox' }, zoomNodes);
   PEND = { dock, zoom };
 }
-// يضع الآية في وسط النافذة فوراً (بلا حركة ولا تمرير)؛ إن كانت أطول من النافذة تُحاذى من أعلاها
+// كاميرا الصفحة: تعرض الآية كاملة في وسط النافذة (نظرة عامة)، أو تقترب من كلمة وتتبعها بانسياب (تحويل translate+scale يُعاد رسمه كل إطار فيبقى الخط حاداً)
 function centerAyah(c) {
-  const fit = () => {
-    const pe = c.el, win = app.clientHeight; if (!win || !c.words.length) return;
-    pe.style.transform = 'none';
-    const p0 = pe.getBoundingClientRect().top;
-    const tops = c.words.map(w => w.getBoundingClientRect()), top = Math.min(...tops.map(r => r.top)) - p0, bot = Math.max(...tops.map(r => r.bottom)) - p0;
-    let y = bot - top >= win - 24 ? top - 12 : top - (win - (bot - top)) / 2;
-    y = Math.max(-8, Math.min(y, pe.offsetHeight + 16 - win)); if (pe.offsetHeight + 16 <= win) y = -8;
-    pe.style.transform = `translateY(${-y - 0}px)`;
+  const pe = c.el; let g = null, cur = null, tgt = null, raf = 0, last = 0, mode = 'over', fi = -1;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  function measure() {
+    const ar = app.getBoundingClientRect(); if (!ar.height || !c.words.length) return false;
+    pe.style.transformOrigin = '0 0'; pe.style.transform = 'none';
+    const p = pe.getBoundingClientRect(), r = c.words.map(w => { const b = w.getBoundingClientRect(); return { x: b.left - p.left + b.width / 2, y: b.top - p.top + b.height / 2, w: b.width, t: b.top - p.top, b: b.bottom - p.top }; });
+    const mw = r.reduce((x, y) => x + y.w, 0) / r.length;
+    g = { W: ar.width, H: ar.height, pl: p.left - ar.left, pt: p.top - ar.top, pw: p.width, ph: p.height, r, s: clamp(ar.width * .8 / (3 * mw), 1.4, 3.4) };
+    return true;
+  }
+  function overview() {   // الآية في الوسط؛ الأطول من النافذة تُحاذى من أعلاها
+    const top = Math.min(...g.r.map(x => x.t)), bot = Math.max(...g.r.map(x => x.b));
+    let y = bot - top >= g.H - 24 ? top - 12 : top - (g.H - (bot - top)) / 2;
+    y = clamp(y, -8, g.ph + 16 - g.H); if (g.ph + 16 <= g.H) y = -8;
+    return { tx: 0, ty: -y, s: 1 };
+  }
+  function focusAt(i) {
+    const s = g.s, q = g.r[i], sw = g.pw * s, sh = g.ph * s;
+    let tx = g.W / 2 - g.pl - q.x * s, ty = g.H / 2 - g.pt - q.y * s;
+    tx = sw > g.W ? clamp(tx, g.W - g.pl - sw, -g.pl) : (g.W - sw) / 2 - g.pl;
+    ty = sh > g.H ? clamp(ty, g.H - g.pt - sh, -g.pt) : (g.H - sh) / 2 - g.pt;
+    return { tx, ty, s };
+  }
+  const apply = () => { pe.style.transform = `translate(${cur.tx}px,${cur.ty}px) scale(${cur.s})`; };
+  const retarget = () => { if (g) tgt = mode === 'over' || fi < 0 ? overview() : focusAt(fi); };
+  function tick(t) {
+    raf = 0; if (!cur || !tgt) return;
+    pe.style.willChange = 'transform';   // أثناء الحركة طبقة مركّبة بالمعالج الرسومي؛ وعند السكون يُعاد رسم الخط حاداً
+    const k = 1 - Math.exp(-Math.max(0, Math.min(.1, (t - last) / 1000)) * 6.5); last = t;
+    for (const key of ['tx', 'ty', 's']) cur[key] += (tgt[key] - cur[key]) * k;
+    apply();
+    if (Math.abs(tgt.tx - cur.tx) + Math.abs(tgt.ty - cur.ty) + Math.abs(tgt.s - cur.s) * 100 > .3) raf = requestAnimationFrame(tick); else { Object.assign(cur, tgt); apply(); pe.style.willChange = 'auto'; }
+  }
+  const go = () => { if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); } };
+  function snap() { if (!measure()) return; retarget(); cur = { ...tgt }; apply(); }
+  const api = {
+    focus(i) { if (!g || i < 0 || i >= g.r.length || (mode === 'focus' && fi === i)) return; mode = 'focus'; fi = i; retarget(); go(); },
+    overview() { mode = 'over'; fi = -1; retarget(); go(); },
+    get zoomed() { return mode === 'focus'; },
+    dbg: () => ({ cur, tgt, fi, mode, raf, g: g && { W: g.W, H: g.H, pl: g.pl, pt: g.pt, pw: g.pw, ph: g.ph, s: g.s, r: g.r[fi] } }),
   };
-  CENTER = fit; fit();
+  CENTER = snap; snap();
+  c.cam = api; return api;
 }
 function stopAudio() { if (audio) { audio.onended = null; audio.pause(); audio = null; } }
 const audioOf = key => new Audio('/audio/' + key + '.mp3');
@@ -168,12 +201,13 @@ function lesson(u, kind, extra) {
     const plan = makePlan();
     const st = strip(), pg = page();
     // لا إخفاء للكلمات: الآية كاملة دائماً، وغير المقطع الحالي يخفت فقط؛ والكلمة المقروءة تتلوّن
-    const mark = i => st.setCur(j => j === i);   // نقطة تركيز واحدة: التلوين المتحرك في البطاقة فقط
+    const mark = i => { const c = pg.box.c; if (!c) return; c.setCur(j => j === i); if (i >= 0 && c.cam) c.cam.focus(i); };   // الكاميرا والتلوين على الكلمة الجارية في الصفحة نفسها
     const apply = e => {
       const w = e && e.w, dim = w ? (i => i < w[0] || i >= w[1]) : (() => false);
-      st.setDim(dim); if (pg.box.c) pg.box.c.setDim(dim);
+      if (pg.box.c) pg.box.c.setDim(dim);
     };
     pg.box.onReady = c => apply(plan[Math.min(r, plan.length - 1)]);
+    const hit = fn => pg.box.c && pg.box.c.setHit(fn);
     const info = PLAN[u.key] || {};
     const wt = words.map(w => (w.replace(/[^ء-ي]/g, '').length || 1) + .5);
     // تلوين الكلمة الجارية: من توقيت الكلمات الدقيق (Quran Foundation) ومتزامناً مع زمن التشغيل الفعلي للصوت؛
@@ -257,7 +291,8 @@ function lesson(u, kind, extra) {
       const upd = () => {
         const h = compare(exp, (prev + ' ' + heard).trim()).hit, wh = {};
         idx.forEach((j, k) => { wh[gi[j]] = wh[gi[j]] !== false && h[k]; });
-        st.setHit(i => wh[i] === true); frac = idx.length ? h.filter(Boolean).length / idx.length : 0;
+        hit(i => wh[i] === true); let fr = -1; idx.forEach(j => { if (wh[gi[j]]) fr = Math.max(fr, gi[j]); });
+        pg.box.c && pg.box.c.cam && pg.box.c.cam.focus(Math.min(Math.max(fr + 1, w0), w1 - 1)); frac = idx.length ? h.filter(Boolean).length / idx.length : 0;
       };
       const mk = () => {
         rec = new SR(); rec.lang = 'ar-SA'; rec.continuous = true; rec.interimResults = true;
@@ -278,6 +313,7 @@ function lesson(u, kind, extra) {
     async function myTurn(ms, id, e) {
       setTurn(true, '🎙 دورك — اقرأ الآن'); cue();
       main.disabled = false; main.textContent = '✓ انتهيت'; main.onact = () => skip && skip();
+      pg.box.c && pg.box.c.cam && pg.box.c.cam.focus(e.w ? e.w[0] : 0);
       live = liveStart(e);
       if (!live) follow(e, false, ms, id, null);   // بلا تعرّف: يتلوّن النص بإيقاع القراءة ليسير معه
       await new Promise(res => { skip = res; setTimeout(res, ms); });
@@ -288,7 +324,7 @@ function lesson(u, kind, extra) {
     async function loop(id) {
       while (r < plan.length && id === LOOP) {
         const e = plan[r];
-        apply(e); st.box.dataset.hl = e.lv; st.setHit(() => false); setDots(r);
+        apply(e); if (pg.box.c) pg.box.c.el.dataset.hl = e.lv; hit(() => false); setDots(r);
         setTurn(false, e.listen ? '🔊 استمع للقارئ' : '🔊 اسمع القارئ ثم اقرأ');
         const d = await playOnce(e, id);
         if (id !== LOOP) return;
@@ -303,7 +339,7 @@ function lesson(u, kind, extra) {
         r++;
       }
       if (id !== LOOP) return;
-      playing = false; apply(null); mark(-1); st.setHit(() => false); r = 0; setDots(plan.length);
+      playing = false; apply(null); mark(-1); hit(() => false); pg.box.c && pg.box.c.cam && pg.box.c.cam.overview(); r = 0; setDots(plan.length);
       setTurn(false, '🌟 ما شاء الله — الآن التسميع'); okCue();
       pause.style.display = 'none'; main.disabled = false; main.textContent = 'جاهز للتسميع'; main.onact = () => stepRecite();
     }
@@ -311,7 +347,8 @@ function lesson(u, kind, extra) {
       if (playing) { LOOP++; stopAudio(); skip && skip(); live && live.stop(); live = null; playing = false; mark(-1); pause.textContent = '▶'; return; }
       playing = true; pause.textContent = '⏸'; loop(++LOOP);
     }
-    setDock(topCard(st.box, pause), banner, dots, main);
+    setDock(topCard('', pause), banner, dots, main);
+    PEND.zoom.classList.add('slim');
     show(pg.host);
     askMic().then(() => setTimeout(toggle, 300));   // يبدأ تلقائياً
   }

@@ -68,7 +68,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
         pg.goto(B + '/k/' + TOK['ص']); pg.wait_for_selector('text=ابدأ الآن'); pg.evaluate('window.__hang=true')
         keys = sorted(UN); out = []; t0 = time.time()
         for k in keys:
-            pg.evaluate("(u)=>lesson(u,'practice')", UN[k]); pg.wait_for_selector('.mpage .mw.f', timeout=15000); pg.wait_for_timeout(120)
+            pg.evaluate("(u)=>lesson(u,'review')", UN[k]); pg.wait_for_selector('.mpage .mw.f', timeout=15000); pg.wait_for_timeout(120)
             r = pg.evaluate("""()=>{const a=document.getElementById('app').getBoundingClientRect(),w=[...document.querySelectorAll('.mpage .mw.f')].map(x=>x.getBoundingClientRect());
               return {t:Math.min(...w.map(x=>x.top))-a.top,b:Math.max(...w.map(x=>x.bottom))-a.top,win:a.height,sy:scrollY,dh:document.documentElement.scrollHeight-innerHeight}}""")
             if r['t'] < -1 or r['b'] > r['win'] + 1 or r['sy'] or r['dh'] > 1: out.append((k, r))
@@ -78,15 +78,16 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
         def sim(key, expect_chunk=None):
             ctx2 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx2.add_init_script(INIT); pg2 = ctx2.new_page(); pg2.on('pageerror', lambda e: errs.append(str(e)))
             pg2.clock.install(); pg2.goto(B + '/k/' + TOK['ص']); pg2.wait_for_selector('text=ابدأ الآن'); pg2.evaluate("(u)=>lesson(u,'practice')", UN[key]); pg2.wait_for_selector('.mpage .mw.f'); pg2.add_style_tag(content='*{transition:none!important;animation:none!important}'); pg2.wait_for_timeout(300)
-            seq = []; t = 0; mism = 0; stale = 0; blurred = 0; turn_bad = 0; saw_mine = 0; clicked = False
+            seq = []; t = 0; cur_n = 0; out_n = 0; maxsc = 1; mism = 0; stale = 0; blurred = 0; turn_bad = 0; saw_mine = 0; clicked = False
             while t < 900:
                 pg2.clock.run_for(500); t += .5
-                st = pg2.evaluate("""()=>{const tb=document.querySelector('.turn');const c=[...document.querySelectorAll('.zoombox .w')].findIndex(x=>x.classList.contains('cur'));const pc=document.querySelectorAll('.mpage .mw.cur').length;
+                st = pg2.evaluate("""()=>{const tb=document.querySelector('.turn');const c=[...document.querySelectorAll('.zoombox .w')].findIndex(x=>x.classList.contains('cur'));const pc=document.querySelectorAll('.mpage .mw.cur').length;const cw=document.querySelector('.mpage .mw.f.cur'),ap=document.getElementById('app').getBoundingClientRect(),cr=cw?cw.getBoundingClientRect():null;const sc=new DOMMatrix(getComputedStyle(document.querySelector('.mpage')).transform).a;const cards=document.querySelectorAll('.zoombox .quran').length;
                   const op=x=>{const e=document.querySelector(x);return e?parseFloat(getComputedStyle(e).opacity):null};
-                  return {b:tb?tb.textContent:'',c,pc,tm:document.body.classList.contains('tm'),tl:document.body.classList.contains('tl'),zm:document.querySelector('.zoombox').classList.contains('mine'),op:op('.mpage .mw:not(.f)'),blur:getComputedStyle(document.querySelector('.mpage .mw:not(.f)')).filter,
+                  return {b:tb?tb.textContent:'',c,pc,cards,sc,out:cr?(cr.left+cr.width/2<ap.left||cr.left+cr.width/2>ap.right||cr.top+cr.height/2<ap.top||cr.top+cr.height/2>ap.bottom):false,has:!!cr,tm:document.body.classList.contains('tm'),tl:document.body.classList.contains('tl'),zm:document.querySelector('.zoombox').classList.contains('mine'),op:op('.mpage .mw:not(.f)'),blur:getComputedStyle(document.querySelector('.mpage .mw:not(.f)')).filter,
                   dots:document.querySelectorAll('.dots2 i').length,ready:[...document.querySelectorAll('.dock .btn')].some(x=>x.textContent.includes('جاهز للتسميع')&&!x.disabled),stale:!!document.querySelector('.dock .mute.say,.dock .bar')}}""")
                 if not seq or seq[-1] != st['b']: seq.append(st['b'])
-                if st['pc']: mism += 1                      # نقطة تركيز واحدة: لا تلوين متحرك في الصفحة
+                if st['pc'] > 1 or st['cards']: mism += 1   # كلمة واحدة جارية، ولا بطاقة علوية
+                if st['has']: cur_n += 1; out_n += st['out']; maxsc = max(maxsc, st['sc'])
                 if st['stale']: stale += 1                  # لا عدّاد نصي ولا شريط تقدّم
                 if st['blur'] not in ('none', ''): blurred += 1
                 if st['tm']:
@@ -98,7 +99,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
                     if not clicked and saw_mine == 3: pg2.get_by_text('✓ انتهيت').click(); clicked = True
                 if st['ready']: break
             plays = pg2.evaluate('window.__plays')
-            return pg2, ctx2, {'secs': t, 'plays': len(plays), 'slow': sum(1 for x in plays if x[0] == 'S'), 'mism': mism, 'stale': stale, 'blurred': blurred, 'turn_bad': turn_bad, 'dots': st['dots'], 'seq': seq, 'ready': st['ready'], 'mine': saw_mine}
+            return pg2, ctx2, {'secs': t, 'plays': len(plays), 'slow': sum(1 for x in plays if x[0] == 'S'), 'mism': mism, 'cur_n': cur_n, 'out_n': out_n, 'maxsc': maxsc, 'stale': stale, 'blurred': blurred, 'turn_bad': turn_bad, 'dots': st['dots'], 'seq': seq, 'ready': st['ready'], 'mine': saw_mine}
         b2 = p.chromium.launch() if False else None
     with sync_playwright() as p2:
         b2 = p2.chromium.launch()
@@ -106,7 +107,8 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
             pg2, ctx2, r = sim(key)
             ch = 'ch' in plan[key]
             check(f'درس {kind} ({key}): ينتهي ويظهر «جاهز للتسميع»', r['ready'], f"{r['secs']:.0f}s")
-            check(f'درس {kind}: نقطة تركيز واحدة (لا تلوين متحرك في الصفحة)', r['mism'] == 0, r['mism'])
+            check(f'درس {kind}: كلمة جارية واحدة ولا بطاقة علوية', r['mism'] == 0, r['mism'])
+            check(f'درس {kind}: الكاميرا تقترب (تكبير ≥1.4) وتبقى الكلمة الجارية داخل الشاشة', r['maxsc'] >= 1.4 and r['cur_n'] > 5 and r['out_n'] <= max(2, r['cur_n'] * .03), (round(r['maxsc'], 2), r['cur_n'], r['out_n']))
             check(f'درس {kind}: الصفحة بلا تمويه وبلا عدّاد/شريط', r['blurred'] == 0 and r['stale'] == 0, (r['blurred'], r['stale']))
             check(f'درس {kind}: شاشة «دورك» تختلف (إطار أخضر + صفحة تخفت) وشاشة الاستماع هادئة', r['turn_bad'] == 0, r['turn_bad'])
             check(f'درس {kind}: نقاط التقدّم بعدد الخطوات', r['dots'] >= 10, r['dots'])
@@ -130,7 +132,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
         seen = 0
         for _ in range(160):
             pg3.wait_for_timeout(250)
-            if pg3.evaluate("document.body.classList.contains('tm')?document.querySelectorAll('.zoombox .w.hit').length:0"): seen += 1; break
+            if pg3.evaluate("document.body.classList.contains('tm')?document.querySelectorAll('.mpage .mw.f.hit').length:0"): seen += 1; break
         check('تعرّف حيّ: كلمات الطالب تخضرّ في دوره', seen > 0, seen)
         ctx3.close()
         b2.close()

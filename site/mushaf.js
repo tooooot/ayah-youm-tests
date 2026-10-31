@@ -87,6 +87,7 @@ const Mushaf = (() => {
       setHidden(fn) { focus.forEach((s, i) => s.classList.toggle('h', !!fn(i, focus.length))); },
       setCur(fn) { focus.forEach((s, i) => s.classList.toggle('cur', !!fn(i))); },
       setDim(fn) { focus.forEach((s, i) => s.classList.toggle('dim', !!fn(i))); },
+      setHit(fn) { focus.forEach((s, i) => s.classList.toggle('hit', !!fn(i))); },
     };
   }
   return { init, describe, chip, render };
