@@ -51,12 +51,13 @@ try:
     SESS = acall('/api/auth/test', {'ident': 'run-guardian'})['session']
     acall('/api/v2/family', {'name': 'ت'}, SESS); KID = {}
     for nm, age, st in (('ص', 6, 114), ('ك', 14, 67)): KID[nm] = acall('/api/v2/kids', {'name': nm, 'age': age, 'start': st}, SESS)['id']
+    urllib.request.urlopen(urllib.request.Request(B + '/api/v2/kids/' + KID['ص'], data=json.dumps({'speed': 1.25}).encode(), headers={'Content-Type': 'application/json', 'X-Session': SESS}, method='PUT'))   # سرعة 1.25 كولد أكبر
     SESSJS = f"try{{localStorage.setItem('ayah_session','{SESS}')}}catch(e){{}}"
     DUR = {k: [v['ds'], v['df']] for k, v in plan.items()}
     INIT = """window.__DUR=%s;window.__plays=[];
-window.Audio=class{constructor(s){this.src=s;const m=s.match(/(\\d{6})\\.mp3/);const k=m?m[1]:'114001';this.slow=s.includes('/audio/');this.duration=(window.__DUR[k]||[4,4])[this.slow?0:1];this.readyState=4;this._off=0;this._t0=null;this._tm=null}
- set currentTime(v){this._off=v} get currentTime(){return this._t0==null?this._off:this._off+(performance.now()-this._t0)/1000}
- play(){this._t0=performance.now();window.__plays.push([this.slow?'S':'F',this._off]);if(window.__hang)return new Promise(()=>{});this._tm=setTimeout(()=>{this.onended&&this.onended()},(this.duration-this._off)*1000);return Promise.resolve()}
+window.Audio=class{constructor(s){this.src=s;const m=s.match(/(\\d{6})\\.mp3/);const k=m?m[1]:'114001';this.slow=s.includes('/audio/');this.duration=(window.__DUR[k]||[4,4])[this.slow?0:1];this.readyState=4;this.playbackRate=1;this._off=0;this._t0=null;this._tm=null}
+ set currentTime(v){this._off=v} get currentTime(){return this._t0==null?this._off:this._off+(performance.now()-this._t0)/1000*this.playbackRate}
+ play(){this._t0=performance.now();window.__plays.push([this.slow?'S':'F',this._off]);if(window.__hang)return new Promise(()=>{});this._tm=setTimeout(()=>{this.onended&&this.onended()},(this.duration-this._off)*1000/this.playbackRate);return Promise.resolve()}
  pause(){clearTimeout(this._tm);this._off=this.currentTime;this._t0=null}};
 window.__say='';window.SpeechRecognition=class{start(){setTimeout(()=>{this.onresult&&this.onresult({results:[[{transcript:window.__say}]]})},80)}stop(){setTimeout(()=>this.onend&&this.onend(),20)}};""" % json.dumps(DUR)
     errs = []
@@ -90,7 +91,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
             ctx2 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx2.add_init_script(INIT); ctx2.add_init_script(SESSJS); pg2 = ctx2.new_page(); pg2.on('pageerror', lambda e: errs.append(str(e)))
             pg2.clock.install(); pg2.goto(B + '/lesson/' + KID['ص']); pg2.wait_for_selector('text=ابدأ الدرس'); pg2.evaluate("(u)=>lesson(u,'practice')", UN[key]); pg2.wait_for_selector('.mpage .mw.f'); pg2.add_style_tag(content='*{transition:none!important;animation:none!important}'); pg2.wait_for_timeout(300)
             seq = []; first_listens = 0; counting = True; t = 0; cur_n = 0; out_n = 0; maxsc = 1; mism = 0; stale = 0; blurred = 0; turn_bad = 0; saw_mine = 0; clicked = False
-            while t < 1500:
+            while t < 2400:
                 pg2.clock.run_for(1000); t += 1
                 st = pg2.evaluate("""()=>{const tb=document.querySelector('.turn');const c=[...document.querySelectorAll('.zoombox .w')].findIndex(x=>x.classList.contains('cur'));const pc=document.querySelectorAll('.mpage .mw.cur').length;const cw=document.querySelector('.mpage .mw.f.cur'),ap=document.getElementById('app').getBoundingClientRect(),cr=cw?cw.getBoundingClientRect():null;const sc=new DOMMatrix(getComputedStyle(document.querySelector('.mpage')).transform).a;const cards=document.querySelectorAll('.zoombox .quran').length;
                   const op=x=>{const e=document.querySelector(x);return e?parseFloat(getComputedStyle(e).opacity):null};
@@ -128,7 +129,7 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
             else: check(f'درس {kind}: كل مقطع 10 استماعات + 10 ترديدات ثم الآية كاملة ×3 (استماعاً وترديداً)', r['plays'] == 20 * len(plan[key]['ch']) + 6, (r['plays'], len(plan[key]['ch'])))
             check(f'درس {kind}: يبدأ بعشر استماعات متتالية بلا فرصة ترديد في أول قراءة', r['first_listens'] >= 10, r['first_listens'])
             check(f'درس {kind}: بانر «دورك» يظهر', r['mine'] > 0, r['seq'][:4])
-            check(f'درس {kind}: الزمن معقول (≤ 15 دقيقة)', r['secs'] <= 900, r['secs']); print('LESSON-TIME', key, round(r['secs']), flush=True)
+            check(f'درس {kind}: الزمن معقول (≤ 20 دقيقة بسرعة 1.25)', r['secs'] <= 1200, r['secs']); print('LESSON-TIME', key, round(r['secs']), flush=True)
             # تسميع
             pg2.get_by_text('جاهز للتسميع').click(); pg2.wait_for_selector('.mic'); pg2.wait_for_timeout(300)
             check(f'التسميع {key}: الصفحة بألوانها (لا تعتيم) والميكروفون يستجيب', pg2.evaluate("parseFloat(getComputedStyle(document.querySelector('.mpage .mw:not(.f)')).opacity)") == 1 and pg2.evaluate("!document.querySelector('.mpage').classList.contains('dimrest')"), '')

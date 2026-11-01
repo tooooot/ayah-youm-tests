@@ -197,3 +197,11 @@ test('عدد التكرارات لكل ولد: افتراضي 10 ويُحصر ب
   assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + k.id, { repeats: 99 })).j.repeats, 10, 'أقصى 10');
   assert.equal((await E.call(dad, 'GET', '/api/v2/kids/' + k.id + '/state')).j.repeats, 10);
 });
+
+test('سرعة القارئ: افتراضي بالعمر ويُحصر في القيم المسموحة', async () => {
+  const dad = await G('dad13'); await E.call(dad, 'POST', '/api/v2/family', { name: 'سرعة' });
+  const a = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ص', age: 7 })).j, b = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'م', age: 10 })).j, c = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ك', age: 14 })).j;
+  assert.equal(a.speed, 1); assert.equal(b.speed, 1.15); assert.equal(c.speed, 1.25);
+  assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + a.id, { speed: 1.25 })).j.speed, 1.25);
+  assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + a.id, { speed: 3 })).j.speed, 1.25, 'قيمة غير مسموحة تُتجاهل');
+});

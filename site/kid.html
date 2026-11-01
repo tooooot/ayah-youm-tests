@@ -18,15 +18,16 @@
 </head>
 <body>
 <div class="wrap" id="app"><p class="mute">جارٍ التحميل…</p></div>
-<script src="/common.js?v=20261101i"></script>
+<script src="/common.js?v=20261101k"></script>
 <script src="/native.js?v=20261101b"></script>
-<script src="/rec.js?v=20261101i"></script>
+<script src="/rec.js?v=20261101k"></script>
 <script src="/mushaf.js?v=20261031c"></script>
 <script>
 try { screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait').catch(() => {}); } catch (_) {}
 const TOKEN = location.pathname.split('/')[2];
 const V2 = true;   // TOKEN = رقم ملف الولد والجلسة من الحساب (لا روابط رموز قديمة)
 const stateApi = () => 'v2/kids/' + TOKEN + '/state';
+let RATE = 1;   // تُضبط من حالة الولد بعد التحميل
 const resultApi = () => 'v2/kids/' + TOKEN + '/result';
 const app = $('#app');
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -103,7 +104,7 @@ function stopAudio() { if (audio) { audio.onended = null; audio.pause(); audio =
 const audioOf = key => new Audio('/audio/' + key + '.mp3');
 
 async function load() {
-  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json?v=20261031c').then(r => r.json()).catch(() => ({})); S = await api(stateApi()); if (V2) return startV2(); home(); }
+  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json?v=20261101ab').then(r => r.json()).catch(() => ({})); S = await api(stateApi()); RATE = Math.max(.8, Math.min(1.5, +S.speed || 1)); if (V2) return startV2(); home(); }
   catch (e) { if (V2) return void (location.href = '/app'); show(el('div', { class: 'card' }, el('h2', {}, 'الرابط غير صحيح'), el('p', { class: 'mute' }, 'اطلب من أبيك الرابط الخاص بك.'))); }
 }
 // الوضع الجديد: التطبيق يفتح الدرس مباشرة بحسب kind وkey في الرابط
@@ -228,7 +229,7 @@ function lesson(u, kind, extra) {
     const main = el('button', { class: 'btn', disabled: true, onclick: () => main.onact && main.onact() }, '…');
     const pause = el('button', { class: 'ibtn', 'aria-label': 'إيقاف مؤقت', onclick: toggle }, '⏸');
     let r = 0, playing = false, skip = null, live = null;
-    const slowUrl = `/audio/${u.key}.mp3`, fastUrl = `/audio-sud/${u.key}.mp3`;
+    const slowUrl = `/audio/${u.key}.mp3`, fastUrl = `/audio-ab/${u.key}.mp3`;
     const sleep = ms => new Promise(res => setTimeout(res, ms));
     const dOf = e => (e.w ? e.fe - e.fs : (e.slow ? info.ds : info.df)) || 4;
     function playOnce(e, id) {   // يرجع مدة ما سُمع بالثواني
@@ -237,14 +238,16 @@ function lesson(u, kind, extra) {
           const a0 = e.fs, a1 = e.fe, seg = !!e.w && !slow;
           const a = audio = new Audio(slow ? slowUrl : fastUrl); let timer = null, started = false;
           const fail = () => { clearTimeout(timer); if (fallback) go1(true, false); else res(4); };
-          const end = () => { clearTimeout(timer); a.onended = null; res(window.__fast ? 0.03 : seg ? a1 - a0 : dur(a)); };
+          const rate = slow ? 1 : RATE;   // سرعة القارئ السريع (يضبطها الأب)؛ البطيء بسرعته
+          try { a.playbackRate = rate; a.preservesPitch = true; a.webkitPreservesPitch = true; } catch (_) {}
+          const end = () => { clearTimeout(timer); a.onended = null; res(window.__fast ? 0.03 : (seg ? a1 - a0 : dur(a)) / rate); };
           const dur = x => (x.duration > 0 && isFinite(x.duration) ? x.duration : 4);
           const start = () => {
             if (started) return; started = true;
             if (seg && a0 > 0) { try { a.currentTime = a0; } catch (_) {} }
             a.play().then(() => {
-              follow(e, slow, dOf({ ...e, slow }) * 1000, id, a);
-              if (seg) timer = setTimeout(() => { a.pause(); end(); }, (a1 - (a0 > 0 ? a0 : 0)) * 1000);
+              follow(e, slow, dOf({ ...e, slow }) * 1000 / rate, id, a);
+              if (seg) timer = setTimeout(() => { a.pause(); end(); }, (a1 - (a0 > 0 ? a0 : 0)) * 1000 / rate);
             }).catch(err => {
               if (err && err.name === 'NotAllowedError') {   // المتصفح منع الصوت التلقائي: نطلب ضغطة بدل الصمت
                 setTurn(false, '🔇 اضغط على الشاشة لتشغيل الصوت');

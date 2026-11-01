@@ -262,6 +262,10 @@ function repeatsCard(k) {   // عدد التكرارات لكل مقطع صوت�
   const cur = k.repeats || 10, d = el('div', { class: 'seg' }, [[10, '10 (الأكمل)'], [7, '7'], [5, '5'], [3, '3']].map(([v, t]) => el('button', { class: v === cur ? 'on' : '', onclick: async e => { try { await api('v2/kids/' + k.id, 'PUT', { repeats: v }); [...d.children].forEach(c => c.classList.toggle('on', c === e.target)); toast('تم ضبط التكرار'); } catch (er) { toast(errMsg(er)); } } }, t)));
   return el('div', { class: 'card' }, el('h2', {}, 'تكرار الحلقة'), el('p', { class: 'mute' }, 'كم مرة يستمع ولدك ثم يردد كل مقطع من الآية. الأكمل 10، وللأصغر أو الآيات الطويلة اختر أقل ليقصر الدرس.'), d);
 }
+function speedCard(k) {   // سرعة تشغيل القارئ: تسرّع الإيقاع مع بقاء الوقفات عند علامات الوقف
+  const cur = k.speed || 1, d = el('div', { class: 'seg' }, [[1, '1× (الأبطأ)'], [1.15, '1.15×'], [1.25, '1.25× (الأسرع)']].map(([v, t]) => el('button', { class: v === cur ? 'on' : '', onclick: async e => { try { await api('v2/kids/' + k.id, 'PUT', { speed: v }); [...d.children].forEach(c => c.classList.toggle('on', c === e.target)); toast('تم ضبط السرعة'); } catch (er) { toast(errMsg(er)); } } }, t)));
+  return el('div', { class: 'card' }, el('h2', {}, 'سرعة القارئ'), el('p', { class: 'mute' }, 'تسريع الصوت مع بقاء نبرته ووقفاته. للأصغر 1×، وللأكبر 1.25× ليكون الدرس أنشط.'), d);
+}
 function kidDetail(id) {
   guardianShell('kids', 'ملف الولد', f => {
     const idx = f.kids.findIndex(x => x.id === id), k = f.kids[idx];
@@ -277,6 +281,7 @@ function kidDetail(id) {
       ...(pendingBox(k) ? [pendingBox(k)] : []), inv,
       el('div', { class: 'card' }, el('h2', {}, 'المكافأة والنقاط'), el('p', { class: 'mute' }, 'كل يوم كامل = 100 نقطة. التطبيق لا يدفع؛ أنت تسلّم المكافأة.'), rw.node, el('button', { class: 'btn', onclick: async () => { try { await rw.save(); } catch (e) { toast(errMsg(e)); } } }, 'حفظ المكافأة')),
       repeatsCard(k),
+      speedCard(k),
       el('div', { class: 'card' }, el('div', { class: 'sw' }, el('div', {}, el('h2', { style: 'margin:0' }, 'تسجيل التسميع'), el('div', { class: 'mute' }, 'يُسجَّل صوت ولدك أثناء التسميع ويبقى على جهازه 14 يوماً. وإن لم يتحقق التطبيق من تسميعه تصلك نسخة مؤقتة لتسمعها (تُحذف بعد قرارك أو بعد 72 ساعة).')),
         (() => { const t = el('button', { class: 'toggle' + (k.recordVoice !== false ? ' on' : ''), 'aria-label': 'تسجيل التسميع', onclick: async () => { const on = !t.classList.contains('on'); try { await api('v2/kids/' + k.id, 'PUT', { recordVoice: on }); t.classList.toggle('on', on); toast(on ? 'فُعّل التسجيل' : 'أُوقف التسجيل'); } catch (e) { toast(errMsg(e)); } } }); return t; })())),
       edit, el('button', { class: 'btn danger', onclick: async () => { if (await confirmTyped(`حذف ${k.name} وكل سجله نهائياً؟`)) { try { await api('v2/kids/' + k.id, 'DELETE'); go('kids'); } catch (e) { toast(errMsg(e)); } } } }, 'حذف الولد'));

@@ -236,7 +236,7 @@ const server = http.createServer(async (req, res) => {
     const rel = p === '/' ? '/index.html' : p;
     const file = path.normalize(path.join(SITE, rel));
     if (!file.startsWith(SITE + path.sep)) return send(res, 403, { error: 'no' });
-    const cache = /^\/(audio|audio-fast|audio-sud|fonts)\//.test(rel) ? 'public, max-age=31536000, immutable' : 'no-cache';
+    const cache = /^\/(audio|audio-fast|audio-sud|audio-ab|fonts)\//.test(rel) ? 'public, max-age=31536000, immutable' : 'no-cache';
     return serveFile(req, res, file, cache);
   } catch (e) {
     console.error(e);
