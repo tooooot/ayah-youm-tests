@@ -58,3 +58,17 @@ test('دمج نتائج التعرّف: لا تكرار حين تكون كل ن�
   assert.equal(joinResults([]), ''); assert.equal(joinResults(null), '');
   assert.equal(joinResults([[{ transcript: 'أ ب' }, { transcript: 'أ ج' }], [{ transcript: 'أ ب ج' }, { transcript: 'أ ج د' }]], 1), 'أ ج د');
 });
+
+test('اقتراح المستوى: ترقية بعد أسبوعين من الإتقان وتخفيف بعد ثلاث مراجعات فاشلة وإخفاء', () => {
+  const T = '2026-11-01', d = n => P.addDays(T, -n), log = [];
+  for (let i = 13; i >= 0; i--) { log.push({ date: d(i), kind: 'new', score: .95, status: 'ok' }); if (i < 10) log.push({ date: d(i), kind: 'review', score: .9, status: 'ok', fail: false }); }
+  const k = { log, levelSince: d(20) };
+  const up = P.suggestLevel(k, 3, T); assert.equal(up.dir, 'up'); assert.equal(up.to, 4);
+  assert.equal(P.suggestLevel(k, 4, T), null, 'لا ترقية فوق الأعلى');
+  assert.equal(P.suggestLevel({ ...k, levelSince: d(5) }, 3, T), null, 'لم يمضِ أسبوعان على المستوى');
+  assert.equal(P.suggestLevel({ log: log.filter(s => !(s.kind === 'new' && [3, 4, 5, 6, 7].some(n => s.date === d(n)))), levelSince: d(20) }, 3, T), null, 'أيام ناقصة');
+  const bad = { ...k, log: [...log, ...[0, 1, 2].map(() => ({ date: T, kind: 'review', score: .2, status: 'ok', fail: true }))] };
+  const dn = P.suggestLevel(bad, 3, T); assert.equal(dn.dir, 'down'); assert.equal(dn.to, 2);
+  assert.equal(P.suggestLevel(bad, 1, T), null, 'لا تخفيف تحت الأدنى');
+  assert.equal(P.suggestLevel({ ...bad, sugHidden: P.addDays(T, 3) }, 3, T), null, 'مخفي أسبوعاً');
+});

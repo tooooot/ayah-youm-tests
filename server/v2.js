@@ -65,12 +65,13 @@ function mount(ctx) {
     return (k.hlog || []).some(e => e.date === date && e.habit === h && e.confirmed);
   };
   const inviteStatus = k => !k.invite ? 'none' : k.invite.claimedBy ? 'claimed' : 'invited';
+  const suggestLevel = k => P.suggestLevel(k, levelOf(k), today());
   async function kidView(k, withInvite) {
     const habits = (k.habits && k.habits.length ? k.habits : ['ayah']);
     if (P.snapToday(k, today(), P.cleanPlan(k.plan || {}))) await save();
     const plan = P.cleanPlan(k.plan || {}), done = habitDone(k), recent = [];
     for (let i = 6; i >= 0; i--) { const d = P.addDays(today(), -i); recent.push({ date: d, pts: P.dayScore(d, habits, plan, done) }); }   // آخر 7 أيام بغضّ النظر عن حدود الدورة
-    const v = { ...kidState(k), habitsDone: Object.fromEntries(habits.map(h => [h, !!done(today(), h)])), recordVoice: k.recordVoice !== false, repeats: repsOf(k), quick: !!k.quick, placement: k.placement || null, speed: speedOf(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
+    const v = { ...kidState(k), habitsDone: Object.fromEntries(habits.map(h => [h, !!done(today(), h)])), recordVoice: k.recordVoice !== false, repeats: repsOf(k), quick: !!k.quick, placement: k.placement || null, suggestion: suggestLevel(k), speed: speedOf(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
     if (withInvite) { v.invite = { status: inviteStatus(k), url: k.invite ? `${ORIGIN}/i/${k.invite.token}` : null }; }
     return v;
   }
@@ -191,7 +192,8 @@ function mount(ctx) {
         const c = cleanKid({ ...k, ...body }); Object.assign(k, c);
         if (body.habits) k.habits = cleanHabits(body.habits);
         if (typeof body.recordVoice === 'boolean') k.recordVoice = body.recordVoice;
-        if (body.level !== undefined && LEVELS[+body.level]) k.level = +body.level;
+        if (body.level !== undefined && LEVELS[+body.level] && +body.level !== levelOf(k)) { k.level = +body.level; k.levelSince = today(); delete k.sugHidden; }
+        if (body.dismissSuggestion) k.sugHidden = P.addDays(today(), 7);   // يُخفى الاقتراح أسبوعاً
         if (body.speed !== undefined && SPEEDS.includes(+body.speed)) k.speed = +body.speed;
         if (body.repeats !== undefined) k.repeats = Math.max(3, Math.min(10, Math.round(+body.repeats) || 10));
         if (body.plan) { k.plan = P.cleanPlan({ ...(k.plan || {}), ...body.plan }); P.snapToday(k, today(), k.plan); k.snaps[today()] = (() => { const cy = P.cycleOf(today(), k.plan.cycleDay), mx = 100 * P.activeDays(cy, k.plan); return k.plan.mode === 'none' || !mx ? 0 : k.plan.amount / mx; })(); }

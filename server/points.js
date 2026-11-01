@@ -68,4 +68,19 @@ function summary(kid, today, habits, doneFn) {
     earned: Math.min(Math.round(money * 100) / 100, cap), byDay, showMoney: plan.showMoney,
   };
 }
-module.exports = { cleanPlan, cycleOf, daysOf, activeDays, weightsOf, dayScore, snapToday, summary, addDays, isRestWeekday };
+// اقتراح تغيير مستوى الحفظ من سجل الجلسات (للأب فقط، والقرار له): ترقية بعد أسبوعين من الإتقان، وتخفيف عند فشل ثلاث مراجعات متتالية
+function suggestLevel(k, lvl, t) {
+  const since = k.levelSince || k.created || t, daysSince = Math.round((Date.parse(t) - Date.parse(since)) / 864e5);
+  if (k.sugHidden && k.sugHidden >= t) return null;
+  const rev = k.log.filter(s => s.kind === 'review' && s.status !== 'rejected' && s.date >= since);
+  if (lvl > 1 && rev.length >= 3 && rev.slice(-3).every(s => s.fail)) return { dir: 'down', to: lvl - 1, why: 'فشل في آخر 3 مراجعات متتالية' };
+  if (lvl < 4 && daysSince >= 14) {
+    const from = addDays(t, -13), nw = k.log.filter(s => s.kind === 'new' && s.status === 'ok' && s.date >= from && s.date >= since);
+    const days = new Set(nw.map(s => s.date)).size, avg = nw.length ? nw.reduce((a, s) => a + s.score, 0) / nw.length : 0;
+    const r14 = rev.filter(s => s.date >= from), okRev = r14.length ? r14.filter(s => !s.fail).length / r14.length : 0;
+    if (days >= 10 && avg >= .9 && r14.length >= 5 && okRev >= .85) return { dir: 'up', to: lvl + 1, why: `أتمّ ${days} أياماً من 14، بإتقان ${Math.round(avg * 100)}% ومراجعات ${Math.round(okRev * 100)}%` };
+  }
+  return null;
+}
+
+module.exports = { suggestLevel, cleanPlan, cycleOf, daysOf, activeDays, weightsOf, dayScore, snapToday, summary, addDays, isRestWeekday };
