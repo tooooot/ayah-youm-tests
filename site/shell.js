@@ -177,7 +177,7 @@ function pendingBox(k) {
   return el('div', { class: 'card' }, el('h2', {}, `تسميع ينتظر تأكيدك — ${k.name}`),
     el('p', { class: 'note' }, 'لم يستطع التطبيق التحقق من تسميعه بالصوت. أكّد فقط إن سمعتَه بنفسك؛ لا تُحسب الآية ولا النقاط قبل تأكيدك.'),
     ...k.pending.map(p => { const slot = el('div'); return el('div', { style: 'padding:8px 0;border-bottom:1px solid var(--line)' }, el('div', { class: 'row sb' }, el('b', {}, p.label), el('span', { class: 'mute' }, p.date)), el('div', { class: 'mute', style: 'margin:2px 0 6px' }, WHY[p.why] || 'لم يُسمَّع بالصوت'),
-      p.hasRec ? [el('button', { class: 'btn sm ghost', onclick: () => playRec(k, p, slot) }, '▶ استمع لتسميعه'), slot] : el('div', { class: 'mute' }, 'لا يوجد تسجيل لهذا التسميع.'),
+      p.hasRec ? [el('div', { class: 'row' }, Array.from({ length: p.nRec || 1 }, (_, i) => el('button', { class: 'btn sm ghost', onclick: () => playRec(k, p, slot, i) }, p.nRec > 1 ? `▶ المقطع ${i + 1}` : '▶ استمع لتسميعه'))), slot] : el('div', { class: 'mute' }, 'لا يوجد تسجيل لهذا التسميع.'),
       FAM && FAM.kids.length > 1 ? moveRow(k, p) : '',
       el('div', { class: 'row' }, el('button', { class: 'btn sm', onclick: () => confirmSession(k, p, true) }, 'سمعتُه وصحّ'), el('button', { class: 'btn sm ghost', onclick: () => confirmSession(k, p, false) }, 'لم أسمعه / يعيد'))); }));
 }
@@ -185,8 +185,8 @@ function moveRow(k, p) {   // سُجّل التسميع على ولد خطأً: 
   const sel = el('select', { 'aria-label': 'نقل إلى', style: 'min-height:40px;margin:0;flex:1' }, FAM.kids.filter(x => x.id !== k.id).map(x => el('option', { value: x.id }, x.name)));
   return el('div', { class: 'row', style: 'margin:6px 0' }, el('span', { class: 'mute' }, 'ليس ولدك هذا؟'), sel, el('button', { class: 'btn sm ghost', onclick: async () => { try { await api(`v2/kids/${k.id}/sessions/${p.sid}/move`, 'POST', { toKid: sel.value }); toast('نُقل التسميع'); route(); } catch (e) { toast(errMsg(e)); } } }, 'نقل'));
 }
-async function playRec(k, p, slot) {   // يجلب التسجيل المؤقت بجلسة الأب ويشغّله
-  try { const r = await fetch(`/api/v2/kids/${k.id}/sessions/${p.sid}/recording`, { headers: { 'X-Session': ls.get('ayah_session') || '' } }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'لا يوجد تسجيل'); const b = await r.blob(); slot.replaceChildren(el('audio', { controls: true, autoplay: true, src: URL.createObjectURL(b), style: 'width:100%;margin-top:6px' })); } catch (e) { toast(errMsg(e)); }
+async function playRec(k, p, slot, i = 0) {   // يجلب التسجيل المؤقت بجلسة الأب ويشغّله
+  try { const r = await fetch(`/api/v2/kids/${k.id}/sessions/${p.sid}/recording?i=${i}`, { headers: { 'X-Session': ls.get('ayah_session') || '' } }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'لا يوجد تسجيل'); const b = await r.blob(); slot.replaceChildren(el('audio', { controls: true, autoplay: true, src: URL.createObjectURL(b), style: 'width:100%;margin-top:6px' })); } catch (e) { toast(errMsg(e)); }
 }
 async function confirmSession(k, p, ok) { try { await api(`v2/kids/${k.id}/confirm`, 'POST', { sid: p.sid, ok }); toast(ok ? 'تم التأكيد' : 'طُلبت الإعادة'); route(); } catch (e) { toast(errMsg(e)); } }
 const todayAr = () => { try { return new Intl.DateTimeFormat('ar-SA-u-ca-gregory', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()); } catch (_) { return ''; } };

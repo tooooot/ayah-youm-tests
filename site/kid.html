@@ -135,7 +135,46 @@ function lesson(u, kind, extra) {
   const full = kind !== 'review';   // new وpractice: استماع وترديد ثم تسميع؛ review: تسميع فقط
   const L = { fails: 0 }, T0 = Date.now();
   const words = u.t.split(' ');
-  const run = () => (full ? stepLoop : stepRecite)();
+  const CH = (PLAN[u.key] || {}).ch;   // الآية الطويلة: حلقة وتسميع لكل مقطع، والإنجاز يكتمل بالمقاطع لا بالآية كلها
+  const parts = [];                   // نتائج تسميع المقاطع
+  const cl = u.c.split(' '), gi = []; { let wi = 0; cl.forEach(t => { gi.push(Math.min(wi, words.length - 1)); if (t !== 'يا') wi++; }); }
+  function chunkStep(i) {
+    if (i >= CH.length) {
+      if (kind === 'review') return finishParts();
+      const J = makePlan().filter(e => e.w === null);   // ربط المقاطع بالآية كاملة (استماع وترديد) ثم الإنجاز
+      return stepLoop({ plan: J, next: finishParts, label: 'إنهاء الدرس' });
+    }
+    const sc = { i, n: CH.length, w: [CH[i][0], CH[i][1]], onPart: p => { parts.push(p); L.fails = 0; chunkStep(i + 1); } };
+    if (kind === 'review') return stepRecite(sc);
+    stepLoop({ plan: makePlan().filter(e => e.g === i), next: () => stepRecite(sc), chunkIdx: i });
+  }
+  async function finishParts() {
+    const pend = parts.some(p => p.method === 'pending'), selfd = parts.some(p => p.method === 'self');
+    const method = pend ? 'pending' : selfd ? 'self' : 'voice', score = parts.length ? Math.min(...parts.map(p => p.score)) : 0;
+    if (kind === 'practice') return doneScreen('practice');
+    const sess = (() => { try { return localStorage.getItem('ayah_session') || ''; } catch (_) { return ''; } })(), recs = [];
+    for (const p of parts) {
+      if (!p.blob) continue;
+      try { await Rec.save({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kidId: TOKEN, label: `${u.name} ${u.i} — المقطع ${p.i + 1}/${CH.length}`, date: new Date().toISOString().slice(0, 10), kind, t: Date.now(), mime: p.blob.type }, p.blob); } catch (_) {}
+      if (p.method === 'pending' && p.blob.size <= 2e6) {
+        try { const r = await fetch(`/api/v2/kids/${TOKEN}/relay`, { method: 'POST', headers: { 'Content-Type': p.blob.type || 'audio/webm', 'X-Session': sess }, body: p.blob }); if (r.ok) recs.push((await r.json()).rid); } catch (_) {}
+      }
+    }
+    try { S = await api(resultApi(), 'POST', { key: u.key, kind, method, score, ...(recs.length ? { rec: recs[0], recs } : {}), extra: !!extra, secs: Math.min(3600, Math.round((Date.now() - T0) / 1000)), diag: { sr: !!SR, err: L.srErr || '', fails: parts.reduce((a, p) => a + p.fails, 0), rec: parts.some(p => p.blob) ? 'ok' : (canRecG() ? 'none' : 'off'), chunks: CH.length, native: !!window.NATIVE, ua: navigator.userAgent.slice(0, 80) } }); }
+    catch (e) { return alert('تعذّر الحفظ: ' + e.message); }
+    doneScreen(method);
+  }
+
+  function doneScreen(method) {
+      show(el('div', { class: 'hero' },
+        el('div', { class: 'big-num' }, '🌟'),
+        el('h1', {}, method === 'pending' ? 'سُجّلت، وينتظر أبوك' : 'ما شاء الله!'),
+        el('div', {}, kind === 'new' ? `حفظتَ ${u.name} ${u.i}` : kind === 'practice' ? `ثبّتَّ ${u.name} ${u.i}` : `راجعتَ ${u.name} ${u.i}`),
+        el('div', { class: 'mute' }, `أيامك المتواصلة: ${S.streak}`)),
+        el('button', { class: 'btn gold', onclick: home }, 'رجوع'));
+    }
+  const canRecG = () => V2 && kind !== 'practice' && S.recordVoice !== false && Rec.supported();
+  const run = () => (CH ? chunkStep(0) : full ? stepLoop() : stepRecite());
 
   // بطاقة النص الكبير في أعلى الشاشة (العنوان يميناً، النص في الوسط) — الإخفاء يُطبَّق على الصفحة أيضاً
   function strip() {
@@ -178,8 +217,8 @@ function lesson(u, kind, extra) {
     return rounds(null, undefined, undefined, '', 0, true);
   }
 
-  function stepLoop() {
-    const plan = makePlan();
+  function stepLoop(opt = {}) {
+    const plan = opt.plan || makePlan();
     const st = strip(), pg = page();
     // لا إخفاء للكلمات: الآية كاملة دائماً، وغير المقطع الحالي يخفت فقط؛ والكلمة المقروءة تتلوّن
     const mark = i => { const c = pg.box.c; if (!c) return; c.setCur(j => j === i); if (i >= 0 && c.cam) c.cam.focus(i); };   // الكاميرا والتلوين على الكلمة الجارية في الصفحة نفسها
@@ -279,7 +318,6 @@ function lesson(u, kind, extra) {
     const cue = () => { tone(880, 120); vib(70); };                                       // بداية دوره
     const okCue = () => { tone(660, 110); tone(880, 160, .12); vib([40, 40, 40]); };        // أتمّ دوره
     // تغذية راجعة حيّة في دوره: كل كلمة ينطقها (وفق التعرّف على الكلام) تخضرّ فوراً؛ لا تمنعه من المتابعة
-    const cl = u.c.split(' '), gi = []; { let wi = 0; cl.forEach(t => { gi.push(Math.min(wi, words.length - 1)); if (t !== 'يا') wi++; }); }
     function liveStart(e) {
       if (!SR || (window.__fast && !window.__live)) return null;
       const [w0, w1] = e.w || [0, words.length], idx = cl.map((_, j) => j).filter(j => gi[j] >= w0 && gi[j] < w1), exp = idx.map(j => cl[j]).join(' ');
@@ -336,8 +374,8 @@ function lesson(u, kind, extra) {
       }
       if (id !== LOOP) return;
       playing = false; apply(null); mark(-1); hit(() => false); pg.box.c && pg.box.c.cam && pg.box.c.cam.overview(); r = 0; setDots(plan.length);
-      setTurn(false, '🌟 ما شاء الله — الآن التسميع'); okCue();
-      pause.style.display = 'none'; main.disabled = false; main.textContent = 'جاهز للتسميع'; main.onact = () => stepRecite();
+      setTurn(false, opt.label ? '🌟 ما شاء الله' : '🌟 ما شاء الله — الآن التسميع'); okCue();
+      pause.style.display = 'none'; main.disabled = false; main.textContent = opt.label || 'جاهز للتسميع'; main.onact = () => (opt.next ? opt.next() : stepRecite());
     }
     function toggle() {
       if (playing) { LOOP++; stopAudio(); skip && skip(); live && live.stop(); live = null; playing = false; mark(-1); pause.textContent = '▶'; return; }
@@ -349,13 +387,14 @@ function lesson(u, kind, extra) {
     askMic().then(() => setTimeout(toggle, 300));   // يبدأ تلقائياً
   }
 
-  function stepRecite() {
+  function stepRecite(sc) {
     const st = strip(), pg = page();
+    const inR = i => !sc || (i >= sc.w[0] && i < sc.w[1]);   // كلمات المقطع المسمَّع (أو الآية كلها)
     let peeking = false;
     // لا بطاقة علوية: الصفحة نفسها هي الشاشة؛ كلمات الآية مخفية فيها (اللمس يكشف كلمة) وتُلوَّن النتيجة عليها
-    const hideAll = () => { const c = pg.box.c; if (c) { c.setHidden(() => true); c.setHit && c.setHit(() => false); c.setMiss && c.setMiss(() => false); } };
+    const hideAll = () => { const c = pg.box.c; if (c) { c.setHidden(inR); if (sc) { c.el.classList.add('dimrest'); c.setDim(i => !inR(i)); c.cam && c.cam.focus(sc.w[0]); } c.setHit && c.setHit(() => false); c.setMiss && c.setMiss(() => false); } };
     pg.box.onReady = hideAll;
-    const msg = el('div', { class: 'say' }, '');
+    const msg = el('div', { class: 'say' }, sc ? `المقطع ${sc.i + 1} من ${sc.n} — سمّعه الآن` : '');
     const actions = el('div');
     let rec = null, heardAlts = [];
     // تسجيل صوت الولد أثناء التسميع (V2 فقط): يُحفظ على جهازه 14 يوماً، وتُرسل نسخة مؤقتة للأب إن بقي التسميع معلّقاً
@@ -397,15 +436,11 @@ function lesson(u, kind, extra) {
     }
     async function evaluate() {
       if (!heardAlts.some(Boolean)) { if (!L.srErr) { if (lastBlob) noConc = true; L.fails++; msg.textContent = 'لم أسمع شيئاً. أعد.'; if (L.fails >= 2) actions.replaceChildren(...fb()); } return; }
-      const best = heardAlts.map(h => compare(u.c, h)).sort((a, b) => b.score - a.score)[0];
+      const idx = cl.map((_, j) => j).filter(j => inR(gi[j])), exp = idx.map(j => cl[j]).join(' ');
+      const best = heardAlts.map(h => compare(exp, h)).sort((a, b) => b.score - a.score)[0];
       const pct = Math.round(best.score * 100);
-      let hits = best.hit;
-      if (hits.length !== words.length) {   // «يا» تُكتب كلمة مستقلة في النص المنظَّف: نضمّها إلى التي بعدها
-        const g = []; let carry = [];
-        u.c.split(' ').forEach((t, j) => { carry.push(best.hit[j]); if (t !== 'يا') { g.push(carry.every(Boolean)); carry = []; } });
-        hits = g;
-      }
-      if (words.length === hits.length && pg.box.c) { const c = pg.box.c; c.setHidden(() => false); c.setHit(i => hits[i]); c.setMiss(i => !hits[i]); }
+      const wh = {}; idx.forEach((j, q) => { wh[gi[j]] = wh[gi[j]] !== false && !!best.hit[q]; });   // «يا» تُضمّ إلى التي بعدها
+      if (pg.box.c) { const c = pg.box.c; c.setHidden(() => false); c.setHit(i => wh[i] === true); c.setMiss(i => wh[i] === false); }
       const ok = best.score >= S.threshold;
       if (ok || (kind === 'review' && L.fails >= 1)) {
         msg.textContent = ok ? `ما شاء الله! ${pct}%` : `${pct}% — سنراجعها غداً بإذن الله`;
@@ -433,6 +468,7 @@ function lesson(u, kind, extra) {
     }
     async function finish(method, score) {
       mic.disabled = true;
+      if (sc) { sc.onPart({ i: sc.i, method, score, blob: lastBlob, fails: L.fails }); return; }   // مقطع من آية طويلة: تُجمع النتائج ثم تُرسل مرة واحدة
       if (kind === 'practice') { done('practice'); return; }   // تدريب: لا يُسجَّل شيء
       let recId = null;
       if (lastBlob) {   // نسخة محلية 14 يوماً، ونسخة مؤقتة للخادم فقط إن كان التسميع ينتظر تأكيد الأب
@@ -445,14 +481,7 @@ function lesson(u, kind, extra) {
       catch (e) { msg.textContent = 'تعذّر الحفظ: ' + e.message; mic.disabled = false; return; }
       done(method);
     }
-    function done(method) {
-      show(el('div', { class: 'hero' },
-        el('div', { class: 'big-num' }, '🌟'),
-        el('h1', {}, method === 'pending' ? 'سُجّلت، وينتظر أبوك' : 'ما شاء الله!'),
-        el('div', {}, kind === 'new' ? `حفظتَ ${u.name} ${u.i}` : kind === 'practice' ? `ثبّتَّ ${u.name} ${u.i}` : `راجعتَ ${u.name} ${u.i}`),
-        el('div', { class: 'mute' }, `أيامك المتواصلة: ${S.streak}`)),
-        el('button', { class: 'btn gold', onclick: home }, 'رجوع'));
-    }
+    const done = doneScreen;
 
     const dockNodes = [msg];
     if (SR || canRec) dockNodes.push(mic); if (SR) {} else if (canRec) dockNodes.push(el('div', { class: 'note' }, 'هذا الجهاز لا يستطيع سماع تسميعك، لكنه يسجّله ليسمعه أبوك ويؤكد. اضغط الميكروفون وسمّع الآية.'), actions); else dockNodes.push(el('div', { class: 'note' }, 'هذا الجهاز أو المتصفح لا يدعم سماع التسميع. افتح ثبات من Chrome على أندرويد أو من تطبيق ثبات، أو سمّع لأبيك.'), parentBtn());

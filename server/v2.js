@@ -188,16 +188,16 @@ function mount(ctx) {
       if (sub === 'invite' && m === 'POST') { unlink(k); k.invite = newInvite(); await save(); return send(res, 200, { status: 'invited', url: `${ORIGIN}/i/${k.invite.token}` }); }
       if (sub === 'confirm' && m === 'POST') {
         const s = k.log.find(x => x.id === body.sid && x.status === 'pending'); if (!s) return bad(404, 'غير موجود');
-        s.status = body.ok ? 'ok' : 'rejected'; if (s.rec) dropRelay(s.rec); await save(); return send(res, 200, await kidView(k, true));
+        s.status = body.ok ? 'ok' : 'rejected'; [s.rec, ...(s.recs || [])].filter(Boolean).forEach(dropRelay); await save(); return send(res, 200, await kidView(k, true));
       }
       if (sub === 'sessions' && seg[3] && seg[4] === 'recording' && m === 'GET') {   // استماع الأب للتسميع المعلّق
-        const s = k.log.find(x => x.id === seg[3]); const r = s && s.rec && relayOf(s.rec); if (!r) return bad(404, 'لا يوجد تسجيل (انتهت مدته أو لم يُرسل)');
+        const s = k.log.find(x => x.id === seg[3]); const ri = Math.max(0, +url.searchParams.get('i') || 0); const r = s && relayOf((s.recs && s.recs[ri]) || (ri === 0 && s.rec) || ''); if (!r) return bad(404, 'لا يوجد تسجيل (انتهت مدته أو لم يُرسل)');
         try { const buf = fs.readFileSync(path.join(RELAY_DIR, r.id + '.bin')); res.writeHead(200, { 'Content-Type': r.mime, 'Content-Length': buf.length, 'Cache-Control': 'no-store' }); return res.end(buf); } catch (_) { return bad(404, 'لا يوجد تسجيل'); }
       }
       if (sub === 'sessions' && seg[3] && seg[4] === 'move' && m === 'POST') {   // نقل جلسة إلى ولد آخر
         const to = f.kids.find(x => x.id === body.toKid); const i = k.log.findIndex(x => x.id === seg[3]);
         if (!to || to === k || i < 0) return bad(404, 'غير موجود');
-        { const moved = k.log[i]; if (moved.rec && relayOf(moved.rec)) relayOf(moved.rec).kidId = to.id; }
+        { const moved = k.log[i]; [moved.rec, ...(moved.recs || [])].filter(x => x && relayOf(x)).forEach(x => { relayOf(x).kidId = to.id; }); }
         to.log.push(...k.log.splice(i, 1)); to.log.sort((x, y) => (x.date < y.date ? -1 : 1)); await save(); return send(res, 200, { ok: true });
       }
     }

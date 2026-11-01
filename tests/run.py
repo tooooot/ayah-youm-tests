@@ -90,13 +90,15 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
         def sim(key, expect_chunk=None):
             ctx2 = b2.new_context(viewport={'width': 390, 'height': 844}, locale='ar-SA'); ctx2.add_init_script(INIT); ctx2.add_init_script(SESSJS); pg2 = ctx2.new_page(); pg2.on('pageerror', lambda e: errs.append(str(e)))
             pg2.clock.install(); pg2.goto(B + '/lesson/' + KID['ص']); pg2.wait_for_selector('text=ابدأ الدرس'); pg2.evaluate("(u)=>lesson(u,'practice')", UN[key]); pg2.wait_for_selector('.mpage .mw.f'); pg2.add_style_tag(content='*{transition:none!important;animation:none!important}'); pg2.wait_for_timeout(300)
+            chunked = 'ch' in plan[key]; ci = 0; clw = UN[key]['c'].split(' '); gmap = []; _w = 0
+            for _t in clw: gmap.append(min(_w, len(W[key]) - 1)); _w += (_t != 'يا')
             seq = []; first_listens = 0; counting = True; t = 0; cur_n = 0; out_n = 0; maxsc = 1; mism = 0; stale = 0; blurred = 0; turn_bad = 0; saw_mine = 0; clicked = False
             while t < 2400:
                 pg2.clock.run_for(1000); t += 1
                 st = pg2.evaluate("""()=>{const tb=document.querySelector('.turn');const c=[...document.querySelectorAll('.zoombox .w')].findIndex(x=>x.classList.contains('cur'));const pc=document.querySelectorAll('.mpage .mw.cur').length;const cw=document.querySelector('.mpage .mw.f.cur'),ap=document.getElementById('app').getBoundingClientRect(),cr=cw?cw.getBoundingClientRect():null;const sc=new DOMMatrix(getComputedStyle(document.querySelector('.mpage')).transform).a;const cards=document.querySelectorAll('.zoombox .quran').length;
                   const op=x=>{const e=document.querySelector(x);return e?parseFloat(getComputedStyle(e).opacity):null};
                   return {b:tb?tb.textContent:'',c,pc,cards,sc,out:cr?(cr.left+cr.width/2<ap.left||cr.left+cr.width/2>ap.right||cr.top+cr.height/2<ap.top||cr.top+cr.height/2>ap.bottom):false,has:!!cr,tm:document.body.classList.contains('tm'),tl:document.body.classList.contains('tl'),zm:document.querySelector('.zoombox').classList.contains('mine'),op:op('.mpage .mw:not(.f)'),blur:getComputedStyle(document.querySelector('.mpage .mw:not(.f)')).filter,
-                  dots:document.querySelectorAll('.dots2 i').length,ready:[...document.querySelectorAll('.dock .btn')].some(x=>x.textContent.includes('جاهز للتسميع')&&!x.disabled),stale:!!document.querySelector('.dock .mute.say,.dock .bar')}}""")
+                  dots:document.querySelectorAll('.dots2 i').length,ready:[...document.querySelectorAll('.dock .btn')].some(x=>x.textContent.includes('جاهز للتسميع')&&!x.disabled),fin:[...document.querySelectorAll('.dock .btn')].some(x=>x.textContent.includes('إنهاء الدرس')&&!x.disabled),stale:!!document.querySelector('.dock .mute.say,.dock .bar')}}""")
                 if not seq or seq[-1] != st['b']: seq.append(st['b'])
                 if counting and 'دورك' in st['b']: counting = False; first_listens = pg2.evaluate('window.__plays.length') - 1   # كم استماعاً سبق أول دور له
                 if st['pc'] > 1 or st['cards']: mism += 1   # كلمة واحدة جارية، ولا بطاقة علوية
@@ -110,9 +112,14 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
                 if 'دورك' in st['b']:
                     saw_mine += 1
                     if not clicked and saw_mine == 3: pg2.get_by_text('✓ انتهيت').click(); clicked = True
-                if st['ready']: break
+                if chunked and st['ready']:   # آية طويلة: بعد كل مقطع يأتي تسميعه (لا انتظار لنهاية الآية)
+                    w0, w1 = plan[key]['ch'][ci][0], plan[key]['ch'][ci][1]; say = ' '.join(clw[j] for j in range(len(clw)) if w0 <= gmap[j] < w1)
+                    pg2.get_by_text('جاهز للتسميع').click(); pg2.wait_for_selector('.mic'); pg2.wait_for_timeout(300)
+                    pg2.evaluate("(s)=>window.__say=s", say); pg2.locator('.mic').click(force=True); pg2.clock.run_for(300); pg2.locator('.mic').click(force=True); pg2.clock.run_for(2000); pg2.wait_for_timeout(500)
+                    ci += 1; continue
+                if (chunked and st['fin']) or (not chunked and st['ready']): break
             plays = pg2.evaluate('window.__plays')
-            return pg2, ctx2, {'secs': t, 'plays': len(plays), 'slow': sum(1 for x in plays if x[0] == 'S'), 'mism': mism, 'cur_n': cur_n, 'out_n': out_n, 'maxsc': maxsc, 'stale': stale, 'blurred': blurred, 'turn_bad': turn_bad, 'dots': st['dots'], 'first_listens': first_listens, 'seq': seq, 'ready': st['ready'], 'mine': saw_mine}
+            return pg2, ctx2, {'secs': t, 'plays': len(plays), 'slow': sum(1 for x in plays if x[0] == 'S'), 'mism': mism, 'cur_n': cur_n, 'out_n': out_n, 'maxsc': maxsc, 'stale': stale, 'blurred': blurred, 'turn_bad': turn_bad, 'dots': st['dots'], 'first_listens': first_listens, 'seq': seq, 'ready': st['ready'] or st['fin'], 'recited': ci, 'mine': saw_mine}
         b2 = p.chromium.launch() if False else None
     with sync_playwright() as p2:
         b2 = p2.chromium.launch()
@@ -130,6 +137,11 @@ const lines=[...r.querySelectorAll('.mline')];return {over:lines.filter(l=>l.scr
             check(f'درس {kind}: يبدأ بعشر استماعات متتالية بلا فرصة ترديد في أول قراءة', r['first_listens'] >= 10, r['first_listens'])
             check(f'درس {kind}: بانر «دورك» يظهر', r['mine'] > 0, r['seq'][:4])
             check(f'درس {kind}: الزمن معقول (≤ 20 دقيقة بسرعة 1.25)', r['secs'] <= 1200, r['secs']); print('LESSON-TIME', key, round(r['secs']), flush=True)
+            if ch:   # التسميع تمّ مقطعاً مقطعاً أثناء الدرس؛ الإنهاء بعد ربط المقاطع
+                check(f'درس {kind}: تسميع كل مقطع على حدة ({len(plan[key]["ch"])} مقاطع)', r['recited'] == len(plan[key]['ch']), r['recited'])
+                pg2.get_by_text('إنهاء الدرس').click(); pg2.wait_for_timeout(600)
+                check(f'درس {kind}: يكتمل الإنجاز بتسميع المقاطع لا الآية كلها', pg2.get_by_text('ثبّتَّ').count() > 0, pg2.inner_text('body')[:80])
+                ctx2.close(); continue
             # تسميع
             pg2.get_by_text('جاهز للتسميع').click(); pg2.wait_for_selector('.mic'); pg2.wait_for_timeout(300)
             check(f'التسميع {key}: الصفحة بألوانها (لا تعتيم) والميكروفون يستجيب', pg2.evaluate("parseFloat(getComputedStyle(document.querySelector('.mpage .mw:not(.f)')).opacity)") == 1 and pg2.evaluate("!document.querySelector('.mpage').classList.contains('dimrest')"), '')

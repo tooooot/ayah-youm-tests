@@ -63,9 +63,9 @@ function dropRelay(id) {
   const r = relayOf(id); if (!r) return;
   try { fs.unlinkSync(path.join(RELAY_DIR, r.id + '.bin')); } catch (_) {}
   db.relays = db.relays.filter(x => x !== r);
-  for (const f of db.families) for (const k of f.kids) for (const s of k.log) if (s.rec === id) delete s.rec;
+  for (const f of db.families) for (const k of f.kids) for (const s of k.log) { if (s.rec === id) delete s.rec; if (s.recs) { s.recs = s.recs.filter(x => x !== id); if (!s.recs.length) delete s.recs; } }
 }
-const dropKidRelays = k => { k.log.filter(s => s.rec).forEach(s => dropRelay(s.rec)); db.relays.filter(r => r.kidId === k.id).map(r => r.id).forEach(dropRelay); };   // وكل نسخة مرفوعة باسم الولد ولو لم تُربط بجلسة
+const dropKidRelays = k => { k.log.forEach(s => { [s.rec, ...(s.recs || [])].filter(Boolean).forEach(dropRelay); }); db.relays.filter(r => r.kidId === k.id).map(r => r.id).forEach(dropRelay); };   // وكل نسخة مرفوعة باسم الولد ولو لم تُربط بجلسة
 function purgeRelays() { const now = Date.now(), old = db.relays.filter(r => now - r.t > RELAY_TTL).map(r => r.id); old.forEach(dropRelay); if (old.length) save(); }
 
 // ───────── أدوات ─────────
@@ -118,7 +118,7 @@ function kidState(kid) {
   const last14 = [];
   for (let i = 13; i >= 0; i--) last14.push(newDays.has(addDays(t, -i)));
   const weekNew = [...Array(7).keys()].filter(i => newDays.has(addDays(t, -i))).length;
-  const pending = kid.log.filter(s => s.status === 'pending').map(s => { let d = {}; try { d = JSON.parse(s.diag || '{}'); } catch (_) {} return { sid: s.id, date: s.date, label: label(s.key), why: d.sr === false ? 'unsupported' : (d.err || 'declined'), hasRec: !!(s.rec && relayOf(s.rec)) }; });
+  const pending = kid.log.filter(s => s.status === 'pending').map(s => { let d = {}; try { d = JSON.parse(s.diag || '{}'); } catch (_) {} return { sid: s.id, date: s.date, label: label(s.key), why: d.sr === false ? 'unsupported' : (d.err || 'declined'), hasRec: !!(s.rec && relayOf(s.rec)), nRec: (s.recs && s.recs.length) || (s.rec && relayOf(s.rec) ? 1 : 0) }; });
   return {
     id: kid.id, name: kid.name, age: kid.age, start: kid.start, startName: SURAH[kid.start].name,
     reward: kid.reward, rewardDays: kid.rewardDays, time: kid.time,
@@ -187,7 +187,9 @@ async function submitResult(k, body) {
       const st = kidState(k), t = today();
       const score = Math.max(0, Math.min(1, +body.score || 0));
       const secs = Math.max(0, Math.min(3600, Math.round(+body.secs || 0)));   // مدة الدرس الفعلية (ثوانٍ)
-      const rec = body.rec && relayOf(String(body.rec)) && relayOf(String(body.rec)).kidId === k.id ? String(body.rec) : '';
+      const okRel = x => x && relayOf(String(x)) && relayOf(String(x)).kidId === k.id;
+      const recs = Array.isArray(body.recs) ? body.recs.slice(0, 12).filter(okRel).map(String) : [];   // تسميع على مقاطع: تسجيل لكل مقطع
+      const rec = recs[0] || (okRel(body.rec) ? String(body.rec) : '');
       const diag = body.diag && typeof body.diag === 'object' ? JSON.stringify(body.diag).slice(0, 300) : '';   // لماذا لم يسمع التطبيق (تشخيص)
       if (body.kind === 'new') {
         // آية جديدة ثانية في اليوم مسموحة بطلب صريح (extra) وبحد 4 آيات جديدة يومياً
@@ -197,7 +199,7 @@ async function submitResult(k, body) {
         if (body.method === 'voice') { if (score < st.threshold) return { err: [400, 'low'] }; status = 'ok'; }
         else if (body.method === 'pending') status = 'pending';
         else return { err: [400, 'طريقة غير صحيحة'] };
-        k.log.push({ id: rid(6), date: t, key: body.key, kind: 'new', score, method: body.method, status, secs, ...(diag ? { diag } : {}), ...(rec && status === 'pending' ? { rec } : {}) });
+        k.log.push({ id: rid(6), date: t, key: body.key, kind: 'new', score, method: body.method, status, secs, ...(diag ? { diag } : {}), ...(rec && status === 'pending' ? { rec, ...(recs.length > 1 ? { recs } : {}) } : {}) });
       } else if (body.kind === 'review') {
         if (!st.reviews.some(u => u.key === body.key)) return { err: [409, 'ليست مراجعة اليوم'] };
         const fail = body.method === 'voice' && score < st.threshold;
