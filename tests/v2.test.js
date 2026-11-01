@@ -213,3 +213,14 @@ test('مستوى الحفظ: الهدف اليومي يتبع المستوى و�
   const up = (await E.call(dad, 'PUT', '/api/v2/kids/' + kid.id, { level: 2 })).j; assert.equal(up.level, 2); assert.equal(up.target, 2);
   assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + kid.id, { level: 9 })).j.level, 2, 'قيمة غير مسموحة تُتجاهل');
 });
+
+test('اختبار المستوى: ست آيات عشوائية ثم نتيجة تقترح مستوى', async () => {
+  const dad = await G('dad15'); await E.call(dad, 'POST', '/api/v2/family', { name: 'اختبار' });
+  const kid = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ن', age: 9, start: 114 })).j;
+  const g = (await E.call(dad, 'GET', '/api/v2/kids/' + kid.id + '/placement')).j;
+  assert.equal(g.items.length, 6); assert.ok(new Set(g.items.map(x => x.key)).size === 6); assert.ok(g.items.every(x => x.t.split(' ').length >= 6));
+  const ans = g.items.map((x, i) => ({ key: x.key, ok: i < 4 }));
+  const r = (await E.call(dad, 'POST', '/api/v2/kids/' + kid.id + '/placement', { answers: ans })).j;
+  assert.equal(r.placement.passed, 4); assert.equal(r.placement.suggested, 3);
+  assert.equal((await E.call(dad, 'POST', '/api/v2/kids/' + kid.id + '/placement', { answers: ans.slice(0, 2) })).s, 400);
+});

@@ -264,7 +264,10 @@ function levelCard(k) {   // مستوى الحفظ: كم آية جديدة وم�
   const list = el('div', { class: 'levels' }, LEVEL_CARDS.map(([v, name, desc]) => { const per = v, rev = [0, 3, 5, 7, 10][v], m = mins(per, rev);
     return el('button', { class: 'lvl' + (v === cur ? ' on' : ''), onclick: async e => { try { await api('v2/kids/' + k.id, 'PUT', { level: v }); [...list.children].forEach(c => c.classList.remove('on')); e.currentTarget.classList.add('on'); toast('تم ضبط المستوى'); } catch (er) { toast(errMsg(er)); } } },
       el('b', {}, name), el('span', { class: 'mute' }, desc), m ? el('span', { class: 'chip' }, `≈ ${m} دقيقة يومياً (من متوسط ${k.name})`) : ''); }));
-  return el('div', { class: 'card' }, el('h2', {}, 'مستوى الحفظ'), el('p', { class: 'mute' }, 'اختر ما يناسب ولدك الآن؛ يمكنك رفعه أو خفضه في أي وقت. تُحسب نقاط الحفظ كاملة عند إتمام عدد آيات يومه.'), list);
+  const pl = k.placement, sug = pl && LEVEL_CARDS.find(c => c[0] === pl.suggested);
+  const test = el('div', { style: 'margin-top:10px' }, el('button', { class: 'btn sm ghost', onclick: () => { location.href = `/lesson/${k.id}?placement=1`; } }, 'اختبار المستوى (6 آيات «أكمل من هذه الآية»)'),
+    pl ? el('div', { class: 'note', style: 'margin-top:8px' }, `آخر اختبار (${pl.date}): أكمل ${pl.passed} من ${pl.total} — يقترح التطبيق مستوى «${sug ? sug[1] : ''}». هذا يقيس ما يحفظه الآن لا طاقته؛ والقرار لك.`, pl.suggested !== cur ? el('button', { class: 'btn sm', style: 'margin-inline-start:8px', onclick: async () => { try { await api('v2/kids/' + k.id, 'PUT', { level: pl.suggested }); toast('اعتُمد المستوى'); route(); } catch (er) { toast(errMsg(er)); } } }, 'اعتمد المقترح') : '') : '');
+  return el('div', { class: 'card' }, el('h2', {}, 'مستوى الحفظ'), el('p', { class: 'mute' }, 'اختر ما يناسب ولدك الآن؛ يمكنك رفعه أو خفضه في أي وقت. تُحسب نقاط الحفظ كاملة عند إتمام عدد آيات يومه.'), list, test);
 }
 function repeatsCard(k) {   // عدد التكرارات لكل مقطع صوتي (استماعاً ثم ترديداً)
   const cur = k.repeats || 10, d = el('div', { class: 'seg' }, [[10, '10 (الأكمل)'], [7, '7'], [5, '5'], [3, '3']].map(([v, t]) => el('button', { class: v === cur ? 'on' : '', onclick: async e => { try { await api('v2/kids/' + k.id, 'PUT', { repeats: v }); [...d.children].forEach(c => c.classList.toggle('on', c === e.target)); toast('تم ضبط التكرار'); } catch (er) { toast(errMsg(er)); } } }, t)));

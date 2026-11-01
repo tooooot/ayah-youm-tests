@@ -104,8 +104,42 @@ function stopAudio() { if (audio) { audio.onended = null; audio.pause(); audio =
 const audioOf = key => new Audio('/audio/' + key + '.mp3');
 
 async function load() {
-  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json?v=20261101ac').then(r => r.json()).catch(() => ({})); S = await api(stateApi()); RATE = Math.max(.8, Math.min(1.5, +S.speed || 1)); if (V2) return startV2(); home(); }
+  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json?v=20261101ac').then(r => r.json()).catch(() => ({})); S = await api(stateApi()); RATE = Math.max(.8, Math.min(1.5, +S.speed || 1)); if (V2) return new URLSearchParams(location.search).get('placement') ? startPlacement() : startV2(); home(); }
   catch (e) { if (V2) return void (location.href = '/app'); show(el('div', { class: 'card' }, el('h2', {}, 'الرابط غير صحيح'), el('p', { class: 'mute' }, 'اطلب من أبيك الرابط الخاص بك.'))); }
+}
+// اختبار المستوى «أكمل من هذه الآية»: تُعرض بداية ست آيات من مقرّره ويكمل الولد الباقي؛ النتيجة تُحفظ ويقترح التطبيق مستوى والأب يعتمد
+async function startPlacement() {
+  const items = (await api('v2/kids/' + TOKEN + '/placement')).items, res = []; let idx = 0;
+  const back = () => { location.href = '/app'; };
+  if (items.length < 3) return show(el('div', { class: 'card' }, el('h2', {}, 'لا تكفي الآيات للاختبار'), el('button', { class: 'btn', onclick: back }, 'رجوع')));
+  const prog = () => el('div', { class: 'mute', style: 'text-align:center' }, `السؤال ${idx + 1} من ${items.length}`);
+  const prefixOf = u => Math.max(2, Math.ceil(u.t.split(' ').length * .4));
+  function ask() {
+    if (idx >= items.length) return finish();
+    const u = items[idx], ws = u.t.split(' '), p = prefixOf(u), cl = u.c.split(' '), gi = []; { let wi = 0; cl.forEach(t => { gi.push(Math.min(wi, ws.length - 1)); if (t !== 'يا') wi++; }); }
+    const exp = cl.filter((_, j) => gi[j] >= p).join(' '), rest = el('span', { class: 'quran', style: 'visibility:hidden' }, ' ' + ws.slice(p).join(' '));
+    const msg = el('div', { class: 'say' }, SR ? 'اضغط الميكروفون وأكمل الآية من حيث وقفت' : 'أكمل الآية في نفسك ثم اضغط «أظهر الباقي»'), actions = el('div');
+    const next = ok => { res.push({ key: u.key, ok }); idx++; ask(); };
+    const judge = () => { rest.style.visibility = 'visible'; actions.replaceChildren(el('button', { class: 'btn', onclick: () => next(true) }, 'عرفتها'), el('button', { class: 'btn ghost', onclick: () => next(false) }, 'لم أعرفها')); };
+    let rec = null, heard = '';
+    const mic = el('button', { class: 'mic', 'aria-label': 'ميكروفون', onclick: () => {
+      if (rec) { rec.stop(); return; }
+      rec = new SR(); rec.lang = 'ar-SA'; rec.continuous = true; rec.interimResults = true; heard = '';
+      rec.onresult = ev => { heard = joinResults(ev.results); msg.textContent = '… ' + heard; };
+      rec.onerror = () => { msg.textContent = 'لم أسمعك جيداً، أعد المحاولة أو احكم بنفسك.'; };
+      rec.onend = () => { rec = null; mic.classList.remove('live'); if (!heard) { msg.textContent = 'لم أسمع شيئاً. أعد أو اضغط «أظهر الباقي».'; return; } const sc = compare(exp, heard).score; rest.style.visibility = 'visible'; msg.textContent = sc >= .6 ? 'ما شاء الله، أكملتها' : 'لم تكتمل'; setTimeout(() => next(sc >= .6), 1400); };
+      mic.classList.add('live'); try { rec.start(); } catch (_) { rec = null; mic.classList.remove('live'); }
+    } }, '🎙');
+    show(el('div', { class: 'card', style: 'margin-top:6vh;text-align:center' }, prog(), el('div', { class: 'ttl' }, `سورة ${u.name} — ${AR_DIGITS(u.i)}`),
+      el('div', { class: 'quran big', style: 'font-size:2rem;line-height:2.2' }, ws.slice(0, p).join(' '), rest), msg, SR ? mic : '', actions,
+      el('button', { class: 'btn ghost', onclick: judge }, 'أظهر الباقي'), el('button', { class: 'btn ghost', onclick: () => next(false) }, 'لا أعرفها')));
+  }
+  async function finish() {
+    try { S = await api('v2/kids/' + TOKEN + '/placement', 'POST', { answers: res }); } catch (e) { return show(el('div', { class: 'card' }, el('h2', {}, 'تعذّر الحفظ'), el('p', { class: 'mute' }, e.message), el('button', { class: 'btn', onclick: back }, 'رجوع'))); }
+    const n = res.filter(x => x.ok).length;
+    show(el('div', { class: 'hero' }, el('div', { class: 'big-num' }, '🌟'), el('h1', {}, `أكملتَ ${AR_DIGITS(n)} من ${AR_DIGITS(res.length)}`), el('div', { class: 'mute' }, 'سيرى أبوك النتيجة ويقترح التطبيق عليه المستوى المناسب.'), el('button', { class: 'btn gold', onclick: back }, 'رجوع')));
+  }
+  ask();
 }
 // الوضع الجديد: التطبيق يفتح الدرس مباشرة بحسب kind وkey في الرابط
 function startV2() {

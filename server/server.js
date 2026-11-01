@@ -213,7 +213,7 @@ async function submitResult(k, body) {
   return { ok: true };
 }
 
-var V2 = require('./v2').mount({ LEVELS, levelOf, db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR });
+var V2 = require('./v2').mount({ queue, unitOf, LEVELS, levelOf, db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR });
 if (V2.migrate()) { try { fs.copyFileSync(DB_FILE, path.join(DATA_DIR, 'db.pre-v2.json')); } catch (_) {} save(); }
 const authHandler = require('./auth').mount({ db, save, rid, today, ORIGIN, send, readBody, V2 });
 const TEAM = process.env.APPLE_TEAM_PUB || '823299AJGN', BUNDLE = 'net.wardyat.thabat';

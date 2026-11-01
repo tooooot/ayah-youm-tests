@@ -7,7 +7,7 @@ const sha = x => crypto.createHash('sha256').update(String(x)).digest('hex');
 const HABITS = ['ayah', 'word'];
 
 function mount(ctx) {
-  const { LEVELS, levelOf, db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR } = ctx;
+  const { queue, unitOf, LEVELS, levelOf, db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR } = ctx;
   const fs = require('fs'), path = require('path');
   // عقد التكامل مع وحدات العادات (كلماتي): رمز موقّع قصير العمر بلا حسابات هناك، وأحداث إنجاز موقّعة تصل لسجل ثبات
   const SECRET_FILE = path.join(path.dirname(RELAY_DIR), 'habit_secret');
@@ -70,7 +70,7 @@ function mount(ctx) {
     if (P.snapToday(k, today(), P.cleanPlan(k.plan || {}))) await save();
     const plan = P.cleanPlan(k.plan || {}), done = habitDone(k), recent = [];
     for (let i = 6; i >= 0; i--) { const d = P.addDays(today(), -i); recent.push({ date: d, pts: P.dayScore(d, habits, plan, done) }); }   // آخر 7 أيام بغضّ النظر عن حدود الدورة
-    const v = { ...kidState(k), habitsDone: Object.fromEntries(habits.map(h => [h, !!done(today(), h)])), recordVoice: k.recordVoice !== false, repeats: repsOf(k), quick: !!k.quick, speed: speedOf(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
+    const v = { ...kidState(k), habitsDone: Object.fromEntries(habits.map(h => [h, !!done(today(), h)])), recordVoice: k.recordVoice !== false, repeats: repsOf(k), quick: !!k.quick, placement: k.placement || null, speed: speedOf(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
     if (withInvite) { v.invite = { status: inviteStatus(k), url: k.invite ? `${ORIGIN}/i/${k.invite.token}` : null }; }
     return v;
   }
@@ -165,6 +165,18 @@ function mount(ctx) {
       const hit = kidFor(a, seg[1]); if (!hit) return bad(404, 'غير موجود');
       const { f, k, as } = hit, guard = as === 'guardian', sub = seg[2];
       if (!sub && m === 'GET') return send(res, 200, await kidView(k, guard));
+      if (sub === 'placement' && m === 'GET') {   // اختبار «أكمل من هذه الآية»: ست آيات عشوائية من مقرّر الولد
+        const pool = queue(k.start).map(x => unitOf(x.key)).filter(u => { const n = u.t.split(' ').length; return n >= 6 && n <= 20; });
+        const pick = []; while (pick.length < 6 && pool.length) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+        return send(res, 200, { items: pick });
+      }
+      if (sub === 'placement' && m === 'POST') {   // يحفظ النتيجة ويقترح مستوى؛ قرار الاعتماد للأب
+        const ans = (Array.isArray(body.answers) ? body.answers : []).slice(0, 6).filter(x => x && typeof x.key === 'string');
+        if (ans.length < 3) return bad(400, 'نتيجة ناقصة');
+        const passed = ans.filter(x => x.ok === true).length, ratio = passed / ans.length;
+        k.placement = { date: today(), passed, total: ans.length, suggested: ratio >= 1 ? 4 : ratio >= .67 ? 3 : ratio >= .34 ? 2 : 1 };
+        await save(); return send(res, 200, await kidView(k, guard));
+      }
       if (sub === 'state' && m === 'GET') return send(res, 200, await kidView(k, guard));
       if (sub === 'result' && m === 'POST') { const r = await submitResult(k, body); return r.err ? bad(r.err[0], r.err[1]) : send(res, 200, await kidView(k, guard)); }
       if (sub === 'habit-token' && m === 'GET') {   // رمز موقّع لفتح وحدة العادة بهوية الولد دون حساب هناك
