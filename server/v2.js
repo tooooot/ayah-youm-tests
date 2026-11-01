@@ -174,7 +174,7 @@ function mount(ctx) {
         const ans = (Array.isArray(body.answers) ? body.answers : []).slice(0, 6).filter(x => x && typeof x.key === 'string');
         if (ans.length < 3) return bad(400, 'نتيجة ناقصة');
         const passed = ans.filter(x => x.ok === true).length, ratio = passed / ans.length;
-        k.placement = { date: today(), passed, total: ans.length, suggested: ratio >= 1 ? 4 : ratio >= .67 ? 3 : ratio >= .34 ? 2 : 1 };
+        k.placement = { date: today(), passed, total: ans.length, suggested: ratio >= 1 ? 4 : ratio >= .66 ? 3 : ratio >= .33 ? 2 : 1 };
         await save(); return send(res, 200, await kidView(k, guard));
       }
       if (sub === 'state' && m === 'GET') return send(res, 200, await kidView(k, guard));
