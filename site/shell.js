@@ -55,15 +55,23 @@ function reviewerBox() {   // دخول مراجعي المتاجر (حساب م�
   const f = el('div', { hidden: true }, seg, u, p, el('button', { class: 'btn ghost', onclick: async () => { try { const r = await api('auth/reviewer', 'POST', { user: u.value, pass: p.value, role }); ls.set('ayah_session', r.session); location.href = '/app'; } catch (e) { m.textContent = errMsg(e); } } }, 'دخول'), m);
   return el('div', { style: 'text-align:center' }, el('button', { class: 'link', style: 'font-size:.8rem;color:var(--mute);font-weight:600', onclick: () => { f.hidden = !f.hidden; } }, 'دخول المراجعين (للمتاجر)'), f);
 }
-function signin(inv) {
+function signin(inv, who) {
   const top = el('div', { class: 'top' }, el('img', { class: 'logo', src: '/icon-192.png', alt: '' }), el('h1', {}, 'ثبات'),
     inv ? [el('div', { class: 'invitehero' }, el('span', { class: 'mute', style: 'color:#bfe0d4' }, `دعتك عائلة «${inv.family}»`), el('b', {}, `أهلاً ${inv.kid}`)), el('p', { class: 'tagline' }, 'سجّل دخولك بحسابك فيرتبط بملفك تلقائياً وتبدأ مباشرة.')]
-      : el('p', { class: 'tagline' }, 'عادات يومية صغيرة تثبت: آية، وكلمة، وقراءة.'));
+      : el('p', { class: 'tagline' }, who === 'student' ? 'أهلاً بك يا بطل! ادخل بحسابك وتابع عاداتك.' : 'عادات يومية صغيرة تثبت: آية، وكلمة، وقراءة.'));
   const btns = [CFG.google ? el('button', { class: 'btn google', onclick: () => startAuth('google') }, raw(GOOGLE), 'المتابعة بـ Google') : null,
     CFG.apple ? el('button', { class: 'btn apple', onclick: () => startAuth('apple') }, raw(APPLE), 'المتابعة بـ Apple') : null,
     !CFG.google && !CFG.apple ? el('p', { class: 'note' }, 'الدخول بالحساب سيُفعَّل قريباً.') : null];
-  mountRaw(el('div', { class: 'signin' }, top, el('div', { class: 'sheetcard' }, el('h2', {}, inv ? 'تابع للدخول' : 'ابدأ الآن'), el('p', { class: 'lead' }, inv ? 'بحسابك الخاص، خطوة واحدة.' : 'ادخل أو أنشئ حسابك بحساب واحد في خطوة واحدة.'), btns,
+  mountRaw(el('div', { class: 'signin' }, top, el('div', { class: 'sheetcard' }, el('h2', {}, inv ? 'تابع للدخول' : who === 'student' ? 'دخول الابن' : 'ابدأ الآن'), el('p', { class: 'lead' }, inv ? 'بحسابك الخاص، خطوة واحدة.' : who === 'student' ? 'ادخل بحسابك. هذه أول مرة؟ افتح رابط الدعوة الذي أرسله لك أبوك من هذا الجهاز.' : 'ادخل أو أنشئ حسابك بحساب واحد في خطوة واحدة.'), btns,
+    !inv && who ? el('button', { class: 'link', style: 'margin-top:10px', onclick: () => { ls.del('ayah_want'); chooser(); } }, 'رجوع') : null,
     el('p', { class: 'legal' }, 'بمتابعتك توافق على ', el('a', { href: '/privacy' }, 'سياسة الخصوصية')), CFG.reviewer ? reviewerBox() : null)));
+}
+function chooser() {   // أول شاشة بلا دعوة ولا جلسة: من أنت؟
+  const pick = who => { ls.set('ayah_want', who); signin(null, who); };
+  mountRaw(el('div', { class: 'signin' }, el('div', { class: 'top' }, el('img', { class: 'logo', src: '/icon-192.png', alt: '' }), el('h1', {}, 'ثبات'), el('p', { class: 'tagline' }, 'عادات يومية صغيرة تثبت: آية، وكلمة، وقراءة.')),
+    el('div', { class: 'sheetcard' }, el('h2', {}, 'من أنت؟'), el('p', { class: 'lead' }, 'اختر لنبدأ بما يناسبك.'),
+      el('button', { class: 'btn gold', onclick: () => pick('guardian') }, 'أنا أب / أم'), el('button', { class: 'btn ghost', onclick: () => pick('student') }, 'أنا ابن'),
+      el('p', { class: 'legal' }, 'بمتابعتك توافق على ', el('a', { href: '/privacy' }, 'سياسة الخصوصية')), CFG.reviewer ? reviewerBox() : null)));
 }
 const inviteProblem = (title, text) => mount([empty('mail', title, text, el('button', { class: 'btn', onclick: () => { location.href = '/app'; } }, 'متابعة'))], true);
 async function claimInvite(token) {   // يُنفَّذ تلقائياً بعد الدخول: لا ضغطة إضافية ولا اختيار دور
@@ -457,9 +465,11 @@ async function boot() {
   const inv = ls.get('ayah_invite');
   if (!ls.get('ayah_session')) {
     if (inv) { try { return signin(await api('v2/invites/' + inv)); } catch (_) { ls.del('ayah_invite'); return inviteProblem('الدعوة غير صالحة', 'قد تكون أُلغيت أو استُخدمت. اطلب من أبيك دعوة جديدة.'); } }
-    return signin(null);
+    return chooser();
   }
   try { await refreshMe(); } catch (e) { if (e.status === 401) { ls.del('ayah_session'); return boot(); } return mount([errorBox(boot)], true); }
+  const want = ls.get('ayah_want'); if (want) ls.del('ayah_want');
+  if (want === 'student' && !inv && !ME.account.role) { try { await api('v2/role', 'POST', { role: 'student' }); await refreshMe(); } catch (_) {} }   // اختار «أنا ابن» قبل الدخول: حسابه ابن فلا تبدأ له رحلة أب
   if (inv) return claimInvite(inv);
   route();
 }
