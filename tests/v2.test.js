@@ -222,5 +222,5 @@ test('اختبار المستوى: ست آيات عشوائية ثم نتيجة 
   const ans = g.items.map((x, i) => ({ key: x.key, ok: i < 4 }));
   const r = (await E.call(dad, 'POST', '/api/v2/kids/' + kid.id + '/placement', { answers: ans })).j;
   assert.equal(r.placement.passed, 4); assert.equal(r.placement.suggested, 3);
-  assert.equal((await E.call(dad, 'POST', '/api/v2/kids/' + kid.id + '/placement', { answers: ans.slice(0, 2) })).s, 400);
+  assert.equal((await E.call(dad, 'POST', '/api/v2/kids/' + kid.id + '/placement', { answers: ans.slice(0, 2) })).r.status, 400);
 });
