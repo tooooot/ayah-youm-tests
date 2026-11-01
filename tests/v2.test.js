@@ -4,16 +4,21 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('crypto');
 const { startEnv } = require('./helpers.js');
-let E;
+let E, MOD, modLog = [];
 before(async () => {
+  // وحدة مكلمة مزيّفة: تتحقق من توقيع طلب التسجيل وتُرجع صوتاً (السرّ يُقرأ بعد إقلاع الخادم)
+  const http = require('http'); MOD = http.createServer((req, res) => { const u = new URL(req.url, 'http://x'), m = u.pathname.match(/^\/api\/habit\/rec\/([\w-]+)$/); if (!m) { res.writeHead(404); return res.end(); }
+    const secret = require('fs').readFileSync(require('path').join(E.dir, 'habit_secret'), 'utf8').trim(), want = crypto.createHmac('sha256', secret).update(`rec|word|${m[1]}|${u.searchParams.get('kid')}|${u.searchParams.get('ts')}`).digest('hex');
+    modLog.push({ rec: m[1], ok: u.searchParams.get('sig') === want }); if (u.searchParams.get('sig') !== want) { res.writeHead(401); return res.end(); } res.writeHead(200, { 'Content-Type': 'audio/webm' }); res.end(Buffer.from('AUDIO')); });
+  await new Promise(r => MOD.listen(0, r));
   // قاعدة v1 قديمة لاختبار الترحيل: عائلة بحساب مالك وجلسة قديمة
   const sha = x => crypto.createHash('sha256').update(x).digest('hex');
   const v1 = { families: [{ id: 'f1', name: 'عائلة قديمة', parentToken: 'PT-OLD', owners: ['google:old-owner'], sessions: [sha('old-session')], created: '2026-10-30',
     kids: [{ id: 'k1', token: 'KT-OLD', name: 'زياد', age: 14, start: 67, reward: 'نزهة', rewardDays: 7, time: '06:30', rewardSince: null, created: '2026-10-30',
       log: [{ id: 'l1', date: '2026-10-31', key: '067001', kind: 'new', score: 1, method: 'voice', status: 'ok', secs: 100 }] }] }] };
-  E = await startEnv({ files: { 'db.json': v1 }, env: { RELAY_TTL_MS: '4000', RELAY_PURGE_MS: '500', KALIMATI_URL: 'https://kalimati.example' } });
+  E = await startEnv({ files: { 'db.json': v1 }, env: { RELAY_TTL_MS: '4000', RELAY_PURGE_MS: '500', KALIMATI_URL: 'http://127.0.0.1:' + MOD.address().port } });
 });
-after(() => E && E.stop());
+after(() => { E && E.stop(); MOD && MOD.close(); });
 const G = async (sub) => { const s = await E.signIn(sub); await E.call(s.session, 'POST', '/api/v2/role', { role: 'guardian' }); return s.session; };
 
 test('ترحيل v1: الجلسة القديمة تعمل كحساب وصيّ وعائلة زياد ومحفوظاته باقية', async () => {
@@ -172,7 +177,7 @@ test('عقد وحدة الكلمة: رمز موقّع قصير العمر، وح
   const k = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ي', age: 10, habits: ['ayah', 'word'] })).j;
   assert.equal((await E.j('/api/auth/config')).j.kalimati, true);
   const tk = (await E.call(dad, 'GET', `/api/v2/kids/${k.id}/habit-token?habit=word`)).j;
-  assert.match(tk.url, /^https:\/\/kalimati\.example\/\?t=/);
+  assert.match(tk.url, /^http:\/\/127\.0\.0\.1:\d+\/\?t=/);
   const token = decodeURIComponent(tk.url.split('t=')[1]), [p, sig] = token.split('.'), secret = fsx.readFileSync(pathx.join(E.dir, 'habit_secret'), 'utf8').trim();
   assert.equal(crypto.createHmac('sha256', secret).update(p).digest('base64url'), sig, 'توقيع الرمز صحيح');
   const body = JSON.parse(Buffer.from(p, 'base64url')); assert.equal(body.k, k.id); assert.equal(body.h, 'word'); assert.ok(body.e > Date.now() && body.e < Date.now() + 11 * 60e3);
@@ -223,4 +228,21 @@ test('اختبار المستوى: ست آيات عشوائية ثم نتيجة 
   const r = (await E.call(dad, 'POST', '/api/v2/kids/' + kid.id + '/placement', { answers: ans })).j;
   assert.equal(r.placement.passed, 4); assert.equal(r.placement.suggested, 3);
   assert.equal((await E.call(dad, 'POST', '/api/v2/kids/' + kid.id + '/placement', { answers: ans.slice(0, 2) })).r.status, 400);
+});
+
+test('مهارات مكلمة/انطلاقة: إحصاءات وتسجيلات في الحدث، وجلب التسجيل بطلب موقّع للأب فقط', async () => {
+  const http = require('http'), fsx = require('fs'), pathx = require('path');
+  const secret = fsx.readFileSync(pathx.join(E.dir, 'habit_secret'), 'utf8').trim();
+  const dad = await G('dad17'); await E.call(dad, 'POST', '/api/v2/family', { name: 'مهارات' });
+  const kid = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ه', age: 10, habits: ['ayah', 'word'] })).j;
+  const today = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
+  const post = obj => { const raw = JSON.stringify(obj); return fetch(E.base + '/api/v2/habit-events', { method: 'POST', headers: { 'content-type': 'application/json', 'x-signature': crypto.createHmac('sha256', secret).update(raw).digest('hex') }, body: raw }); };
+  assert.equal((await post({ kidId: kid.id, habit: 'word', date: today, units: 1, secs: 120, stats: { text: 'نطق 4 من 5' }, recs: [{ id: 'r1', secs: 8, label: 'apple' }, { id: 'bad id', secs: 3 }] })).status, 200);
+  assert.equal((await post({ kidId: kid.id, habit: 'word', date: today, units: 1, recs: [{ id: 'r2', secs: 6, label: 'cat' }, { id: 'r1', secs: 8 }] })).status, 200, 'إعادة الإرسال تضيف التسجيل الجديد فقط');
+  const sk = (await E.call(dad, 'GET', '/api/v2/kids/' + kid.id + '/state')).j.skills;
+  assert.equal(sk.length, 1); assert.equal(sk[0].name, 'مكلمة'); assert.deepEqual(sk[0].recs.map(r => r.rid).sort(), ['r1', 'r2']); assert.equal(sk[0].last.stats.text, 'نطق 4 من 5'); assert.equal(sk[0].days[6].done, true);
+  const rr = await fetch(E.base + `/api/v2/kids/${kid.id}/habit-rec?habit=word&rid=r1`, { headers: { 'x-session': dad } });
+  assert.equal(rr.status, 200); assert.equal(Buffer.from(await rr.arrayBuffer()).toString(), 'AUDIO'); assert.deepEqual(modLog.pop(), { rec: 'r1', ok: true }, 'الطلب إلى الوحدة موقّع صحيحاً');
+  assert.equal((await fetch(E.base + `/api/v2/kids/${kid.id}/habit-rec?habit=word&rid=zzz`, { headers: { 'x-session': dad } })).status, 404, 'تسجيل غير مسجّل في الحدث');
+  const stud = await E.signIn('stud17'); assert.ok([401, 403, 404].includes((await fetch(E.base + `/api/v2/kids/${kid.id}/habit-rec?habit=word&rid=r1`, { headers: { 'x-session': stud.session } })).status), 'الولد/الغريب لا يسمع');
 });

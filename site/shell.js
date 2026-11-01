@@ -207,7 +207,7 @@ function habitsTab() {
   guardianShell('habits', 'العادات', f => el('div', {},
     el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av0' }, ic('habits')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'آية اليوم'), el('div', { class: 'mute' }, 'استماع وترديد وتسميع في صفحة المصحف، ومراجعة متباعدة'))),
       f.kids.length ? el('div', { style: 'margin-top:8px' }, f.kids.map(k => el('div', { class: 'sw' }, el('span', {}, k.name), el('span', { class: 'chip ' + ((k.habits || []).includes('ayah') ? 'ok' : 'gray') }, (k.habits || []).includes('ayah') ? 'مُسندة' : 'غير مُسندة')))) : el('p', { class: 'mute' }, 'أضف ولداً أولاً.')),
-    el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'كلمة اليوم'), el('div', { class: 'mute' }, 'حفظ كلمة إنجليزية يومياً بمراجعة متباعدة')), el('span', { class: 'chip gray' }, 'قريباً'))),
+    el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'مكلمة'), el('div', { class: 'mute' }, 'حفظ كلمة إنجليزية يومياً بمراجعة متباعدة')), el('span', { class: 'chip gray' }, 'قريباً'))),
     el('p', { class: 'mute' }, 'تُسنَد العادات لكل ولد من صفحته، وتُضاف عادات جديدة لاحقاً: جدول الضرب والقراءة.')));
 }
 function progressTab() {
@@ -253,10 +253,24 @@ async function kidForm(k) {   // نموذج تعديل بيانات الولد: 
   const name = el('input', { value: k.name, maxlength: 30, 'aria-label': 'اسم الولد' }), age = el('select', {}, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(a => el('option', { value: a, selected: a === k.age }, `${a} سنة`)));
   const start = el('select', {}, names.map(s => el('option', { value: s.n, selected: s.n === k.start }, `${s.name} (${s.n})`)));
   const habitSet = new Set(k.habits || ['ayah']);
-  const wt = el('button', { class: 'toggle' + (habitSet.has('word') ? ' on' : ''), 'aria-label': 'كلمة اليوم', onclick: () => { habitSet.has('word') ? habitSet.delete('word') : habitSet.add('word'); wt.classList.toggle('on', habitSet.has('word')); } });
-  const wordRow = CFG.kalimati ? el('div', { class: 'sw' }, el('span', {}, 'كلمة اليوم (إنجليزي)'), wt) : el('div', { class: 'sw' }, el('span', {}, 'كلمة اليوم (إنجليزي)'), el('span', { class: 'chip gray' }, 'قريباً'));
-  return [el('label', {}, 'الاسم'), name, el('label', {}, 'العمر'), age, el('label', {}, 'الخطة تبدأ من سورة'), start, el('div', { class: 'sw' }, el('span', {}, 'آية اليوم'), el('button', { class: 'toggle on', 'aria-label': 'آية اليوم', disabled: true })), wordRow,
+  const wt = el('button', { class: 'toggle' + (habitSet.has('word') ? ' on' : ''), 'aria-label': 'مكلمة', onclick: () => { habitSet.has('word') ? habitSet.delete('word') : habitSet.add('word'); wt.classList.toggle('on', habitSet.has('word')); } });
+  const wordRow = CFG.kalimati ? el('div', { class: 'sw' }, el('span', {}, 'مكلمة (كلمات إنجليزية)'), wt) : el('div', { class: 'sw' }, el('span', {}, 'مكلمة (كلمات إنجليزية)'), el('span', { class: 'chip gray' }, 'قريباً'));
+  const rt = el('button', { class: 'toggle' + (habitSet.has('read') ? ' on' : ''), 'aria-label': 'انطلاقة', onclick: () => { habitSet.has('read') ? habitSet.delete('read') : habitSet.add('read'); rt.classList.toggle('on', habitSet.has('read')); } });
+  const readRow = CFG.talaqa ? el('div', { class: 'sw' }, el('span', {}, 'انطلاقة (القراءة العربية)'), rt) : '';
+  return [el('label', {}, 'الاسم'), name, el('label', {}, 'العمر'), age, el('label', {}, 'الخطة تبدأ من سورة'), start, el('div', { class: 'sw' }, el('span', {}, 'آية اليوم'), el('button', { class: 'toggle on', 'aria-label': 'آية اليوم', disabled: true })), wordRow, readRow,
     el('button', { class: 'btn', onclick: async () => { try { await api('v2/kids/' + k.id, 'PUT', { name: name.value, age: +age.value, start: +start.value, habits: [...habitSet] }); toast('تم الحفظ'); kidDetail(k.id); } catch (e) { toast(errMsg(e)); } } }, 'حفظ البيانات')];
+}
+function skillsCard(k) {   // مهارات الولد (مكلمة، انطلاقة): آخر 7 أيام وآخر نتيجة وتسجيلات يسمعها الأب
+  const sk = k.skills || []; if (!sk.length) return '';
+  const stat = s => { const l = s.last; if (!l) return 'لم يبدأ بعد'; const st = l.stats || {}, bits = [`آخر مرة ${l.date}`]; if (l.units) bits.push(s.habit === 'word' ? `${l.units} كلمات` : `${l.units} قطعة`); if (l.secs) bits.push(`${Math.max(1, Math.round(l.secs / 60))} د`);
+    if (st.text) bits.push(String(st.text)); else Object.entries(st).slice(0, 3).forEach(([a, b]) => bits.push(`${a}: ${b}`)); return bits.join(' · '); };
+  return el('div', { class: 'card' }, el('h2', {}, 'مهارات إضافية'), ...sk.map(s => { const slot = el('div');
+    return el('div', { style: 'padding:8px 0;border-bottom:1px solid var(--line)' }, el('div', { class: 'row sb' }, el('b', {}, s.name), el('span', { class: 'row', style: 'gap:3px' }, s.days.map(d => el('i', { title: d.date, style: `width:10px;height:10px;border-radius:50%;display:inline-block;background:${d.done ? 'var(--ok,#2e7d32)' : 'var(--line,#ddd)'}` })))),
+      el('div', { class: 'mute', style: 'margin:2px 0 6px' }, stat(s)),
+      s.recs.length ? [el('div', { class: 'row', style: 'flex-wrap:wrap;gap:6px' }, s.recs.map(r => el('button', { class: 'btn sm ghost', onclick: () => playHabitRec(k, s.habit, r, slot) }, `▶ ${r.label || r.date}${r.secs ? ` (${r.secs}ث)` : ''}`))), slot] : el('div', { class: 'mute' }, 'لا تسجيلات بعد.')); }));
+}
+async function playHabitRec(k, habit, r, slot) {
+  try { const x = await fetch(`/api/v2/kids/${k.id}/habit-rec?habit=${habit}&rid=${encodeURIComponent(r.rid)}`, { headers: { 'X-Session': ls.get('ayah_session') || '' } }); if (!x.ok) throw new Error((await x.json().catch(() => ({}))).error || 'لا يوجد تسجيل'); const b = await x.blob(); slot.replaceChildren(el('audio', { controls: true, autoplay: true, src: URL.createObjectURL(b), style: 'width:100%;margin-top:6px' })); } catch (e) { toast(errMsg(e)); }
 }
 const LEVEL_CARDS = [[1, 'مبتدئ', 'آية جديدة يومياً وحتى 3 مراجعات. مناسب للبداية والصغار.'], [2, 'ثابت', 'آيتان يومياً وحتى 5 مراجعات. لمن ثبّت عادته.'], [3, 'نشيط', '3 آيات يومياً وحتى 7 مراجعات.'], [4, 'مجتهد', '4 آيات يومياً وحتى 10 مراجعات. للأقوى حفظاً.']];
 function levelCard(k) {   // مستوى الحفظ: كم آية جديدة ومراجعة كل يوم، مع تقدير زمنه من متوسط ولدك الفعلي
@@ -294,6 +308,7 @@ function kidDetail(id) {
     return el('div', {}, el('div', { class: 'row', style: 'margin-bottom:12px' }, avatar(k.name, idx, 56), el('div', { class: 'grow' }, el('h1', { style: 'margin:0' }, k.name), statusChip(k))),
       ...(pendingBox(k) ? [pendingBox(k)] : []), inv,
       el('div', { class: 'card' }, el('h2', {}, 'المكافأة والنقاط'), el('p', { class: 'mute' }, 'كل يوم كامل = 100 نقطة. التطبيق لا يدفع؛ أنت تسلّم المكافأة.'), rw.node, el('button', { class: 'btn', onclick: async () => { try { await rw.save(); } catch (e) { toast(errMsg(e)); } } }, 'حفظ المكافأة')),
+      skillsCard(k),
       levelCard(k),
       repeatsCard(k),
       speedCard(k),
@@ -333,10 +348,15 @@ function todayTab() {
         s.next && s.todayCount < 4 ? el('button', { class: 'btn gold', onclick: () => { location.href = lessonUrl(p.kidId, 'new', null, true); } }, `آية إضافية: ${s.next.name} ${s.next.i}`) : ''));
       else cards.push(el('div', { class: 'ayahcard' }, el('div', { class: 'tag' }, `آية اليوم${s.target > 1 ? ` (${s.todayCount + 1} من ${s.target})` : ''} · سورة ${s.next.name} — ${s.next.i}`), el('div', { class: 'q' }, s.next.t), el('button', { class: 'btn gold', onclick: () => { location.href = lessonUrl(p.kidId, 'new'); } }, 'ابدأ الآن')));
     } else cards.push(empty('star', 'ما شاء الله! أتممت خطتك', 'اطلب من أبيك خطة جديدة.'));
-    if ((s.habits || []).includes('word') && CFG.kalimati) {   // كلمة اليوم (كلماتي): تُفتح برمز موقّع قصير العمر، والإنجاز يصلنا تلقائياً
+    if ((s.habits || []).includes('word') && CFG.kalimati) {   // مكلمة (كلماتي): تُفتح برمز موقّع قصير العمر، والإنجاز يصلنا تلقائياً
       const wd = s.habitsDone && s.habitsDone.word;
-      cards.push(el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, wd ? ic('check') : ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'كلمة اليوم'), el('div', { class: 'mute' }, wd ? 'أحسنت! أتممت كلمات اليوم' : 'تعلّم كلمات إنجليزية جديدة وراجع السابقة'))),
-        el('button', { class: wd ? 'btn ghost' : 'btn gold', onclick: async () => { try { const r = await api(`v2/kids/${p.kidId}/habit-token?habit=word`); location.href = r.url; } catch (e) { toast(errMsg(e)); } } }, wd ? 'راجع مرة أخرى' : 'ابدأ كلمة اليوم')));
+      cards.push(el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, wd ? ic('check') : ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'مكلمة'), el('div', { class: 'mute' }, wd ? 'أحسنت! أتممت كلمات اليوم' : 'تعلّم كلمات إنجليزية جديدة وراجع السابقة'))),
+        el('button', { class: wd ? 'btn ghost' : 'btn gold', onclick: async () => { try { const r = await api(`v2/kids/${p.kidId}/habit-token?habit=word`); location.href = r.url; } catch (e) { toast(errMsg(e)); } } }, wd ? 'راجع مرة أخرى' : 'ابدأ مكلمة')));
+    }
+    if ((s.habits || []).includes('read') && CFG.talaqa) {   // انطلاقة (طلاقة): الوحدة تقيس قراءة الولد بنفسها وتبلّغنا بالإنجاز
+      const rd = s.habitsDone && s.habitsDone.read;
+      cards.push(el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, rd ? ic('check') : ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'انطلاقة'), el('div', { class: 'mute' }, rd ? 'أحسنت! أتممت انطلاقة اليوم' : 'اقرأ قطعة بصوت عالٍ وسيسمعك التطبيق'))),
+        el('button', { class: rd ? 'btn ghost' : 'btn gold', onclick: async () => { try { const r = await api(`v2/kids/${p.kidId}/habit-token?habit=read`); location.href = r.url; } catch (e) { toast(errMsg(e)); } } }, rd ? 'اقرأ مرة أخرى' : 'ابدأ القراءة')));
     }
     if (s.reviews.length) cards.push(el('div', { class: 'card' }, el('h2', {}, 'مراجعة اليوم'), s.reviews.map(u => el('button', { class: 'btn ghost', onclick: () => { location.href = lessonUrl(p.kidId, 'review', u.key); } }, `راجع: ${u.name} ${u.i}`))));
     return el('div', {}, cards);

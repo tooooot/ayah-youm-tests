@@ -159,7 +159,7 @@ function mount(ctx) {
       const session = V2.newSession(acc); await save();
       return send(res, 200, { session, role: acc.role });
     }
-    if (p === '/api/auth/config' && req.method === 'GET') return send(res, 200, { google: configured('google'), apple: configured('apple'), signup: true, reviewer: !!REV, kalimati: !!process.env.KALIMATI_URL });
+    if (p === '/api/auth/config' && req.method === 'GET') return send(res, 200, { google: configured('google'), apple: configured('apple'), signup: true, reviewer: !!REV, kalimati: !!process.env.KALIMATI_URL, talaqa: !!process.env.TALAQA_URL });
     return false;
   };
 }

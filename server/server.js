@@ -181,7 +181,7 @@ const cleanKid = b => {
     reward: String(b.reward || '').trim().slice(0, 80),
     rewardDays: Math.max(3, Math.min(60, +b.rewardDays || 7)),
     time: /^\d{2}:\d{2}$/.test(b.time || '') ? b.time : '06:30',
-    habits: Array.isArray(b.habits) && b.habits.length ? b.habits.filter(h => ['ayah', 'word'].includes(h)) : ['ayah'],
+    habits: Array.isArray(b.habits) && b.habits.length ? b.habits.filter(h => ['ayah', 'word', 'read'].includes(h)) : ['ayah'],
     plan: require('./points').cleanPlan(b.plan || {}),
   };
 };

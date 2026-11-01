@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const P = require('./points.js');
 
 const sha = x => crypto.createHash('sha256').update(String(x)).digest('hex');
-const HABITS = ['ayah', 'word'];
+const HABITS = ['ayah', 'word', 'read'];
 
 function mount(ctx) {
   const { queue, unitOf, LEVELS, levelOf, db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR } = ctx;
@@ -65,13 +65,22 @@ function mount(ctx) {
     return (k.hlog || []).some(e => e.date === date && e.habit === h && e.confirmed);
   };
   const inviteStatus = k => !k.invite ? 'none' : k.invite.claimedBy ? 'claimed' : 'invited';
+  // مهارات الولد غير الحفظ (مكلمة، انطلاقة): آخر 7 أيام وآخر نتيجة وتسجيلات الاستماع (للأب)
+  const SKILL_NAMES = { word: 'مكلمة', read: 'انطلاقة' };
+  const skillsOf = k => (k.habits || []).filter(h => h !== 'ayah').map(h => {
+    const t = today(), log = (k.hlog || []).filter(e => e.habit === h), by = Object.fromEntries(log.map(e => [e.date, e]));
+    const days = []; for (let i = 6; i >= 0; i--) { const d = P.addDays(t, -i); days.push({ date: d, done: !!(by[d] && by[d].confirmed) }); }
+    const last = log.slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0] || null;
+    const recs = log.flatMap(e => (e.recs || []).map(r => ({ rid: r.id, date: e.date, secs: r.secs, label: r.label }))).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 10);
+    return { habit: h, name: SKILL_NAMES[h] || h, days, last: last ? { date: last.date, units: last.units, secs: last.secs, stats: last.stats || null } : null, recs };
+  });
   const suggestLevel = k => P.suggestLevel(k, levelOf(k), today());
   async function kidView(k, withInvite) {
     const habits = (k.habits && k.habits.length ? k.habits : ['ayah']);
     if (P.snapToday(k, today(), P.cleanPlan(k.plan || {}))) await save();
     const plan = P.cleanPlan(k.plan || {}), done = habitDone(k), recent = [];
     for (let i = 6; i >= 0; i--) { const d = P.addDays(today(), -i); recent.push({ date: d, pts: P.dayScore(d, habits, plan, done) }); }   // آخر 7 أيام بغضّ النظر عن حدود الدورة
-    const v = { ...kidState(k), habitsDone: Object.fromEntries(habits.map(h => [h, !!done(today(), h)])), recordVoice: k.recordVoice !== false, repeats: repsOf(k), quick: !!k.quick, placement: k.placement || null, suggestion: suggestLevel(k), speed: speedOf(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
+    const v = { ...kidState(k), habitsDone: Object.fromEntries(habits.map(h => [h, !!done(today(), h)])), recordVoice: k.recordVoice !== false, repeats: repsOf(k), quick: !!k.quick, placement: k.placement || null, skills: withInvite ? skillsOf(k) : undefined, suggestion: suggestLevel(k), speed: speedOf(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
     if (withInvite) { v.invite = { status: inviteStatus(k), url: k.invite ? `${ORIGIN}/i/${k.invite.token}` : null }; }
     return v;
   }
@@ -100,9 +109,19 @@ function mount(ctx) {
       const sig = String(req.headers['x-signature'] || ''), want = crypto.createHmac('sha256', HSECRET).update(raw).digest('hex');
       if (sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return send(res, 401, { error: 'توقيع غير صحيح' });
       let b; try { b = JSON.parse(raw.toString('utf8')); } catch (_) { return send(res, 400, { error: 'JSON' }); }
-      if (!['word'].includes(b.habit) || !/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return send(res, 400, { error: 'حدث غير صحيح' });
+      if (!['word', 'read'].includes(b.habit) || !/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return send(res, 400, { error: 'حدث غير صحيح' });
       for (const f of db.families) { const k = f.kids.find(x => x.id === b.kidId); if (!k) continue;
-        k.hlog = k.hlog || []; if (!k.hlog.some(e => e.date === b.date && e.habit === b.habit)) k.hlog.push({ date: b.date, habit: b.habit, units: Math.max(0, +b.units || 0), secs: Math.max(0, Math.min(3600, +b.secs || 0)), confirmed: b.confirmed !== false, t: Date.now() });
+        k.hlog = k.hlog || [];
+        // التفاصيل (عقد v2): إحصاءات موجزة وقائمة تسجيلات (الصوت يبقى في الوحدة ويُجلب عند الاستماع)
+        const stats = b.stats && typeof b.stats === 'object' && !Array.isArray(b.stats) && JSON.stringify(b.stats).length <= 600 ? b.stats : undefined;
+        const recs = (Array.isArray(b.recs) ? b.recs : []).slice(0, 10).filter(r => r && /^[\w-]{1,64}$/.test(String(r.id))).map(r => ({ id: String(r.id), secs: Math.max(0, Math.min(600, +r.secs || 0)), label: String(r.label || '').slice(0, 60), t: +r.t || Date.now() }));
+        const ex = k.hlog.find(e => e.date === b.date && e.habit === b.habit);
+        if (!ex) k.hlog.push({ date: b.date, habit: b.habit, units: Math.max(0, +b.units || 0), secs: Math.max(0, Math.min(3600, +b.secs || 0)), confirmed: b.confirmed !== false, t: Date.now(), ...(stats ? { stats } : {}), ...(recs.length ? { recs } : {}) });
+        else {   // إعادة إرسال: تُضاف التسجيلات الجديدة وتُحدَّث الإحصاءات (الإنجاز نفسه لا يتكرر)
+          if (stats) ex.stats = stats;
+          if (recs.length) { const have = new Set((ex.recs || []).map(r => r.id)); ex.recs = [...(ex.recs || []), ...recs.filter(r => !have.has(r.id))].slice(-10); }
+          if (+b.units > ex.units) ex.units = Math.min(1e4, +b.units); if (+b.secs > ex.secs) ex.secs = Math.min(3600, +b.secs);
+        }
         await save(); return send(res, 200, { ok: true }); }
       return send(res, 404, { error: 'ولد غير موجود' });
     }
@@ -181,13 +200,24 @@ function mount(ctx) {
       if (sub === 'state' && m === 'GET') return send(res, 200, await kidView(k, guard));
       if (sub === 'result' && m === 'POST') { const r = await submitResult(k, body); return r.err ? bad(r.err[0], r.err[1]) : send(res, 200, await kidView(k, guard)); }
       if (sub === 'habit-token' && m === 'GET') {   // رمز موقّع لفتح وحدة العادة بهوية الولد دون حساب هناك
-        const base = process.env.KALIMATI_URL, habit = url.searchParams.get('habit') || 'word';
-        if (!base || habit !== 'word' || !(k.habits || []).includes('word')) return bad(503, 'عادة الكلمة غير مفعّلة');
+        const habit = url.searchParams.get('habit') || 'word', base = habit === 'read' ? process.env.TALAQA_URL : process.env.KALIMATI_URL;
+        if (!base || !['word', 'read'].includes(habit) || !(k.habits || []).includes(habit)) return bad(503, habit === 'read' ? 'عادة القراءة غير مفعّلة' : 'عادة الكلمة غير مفعّلة');
         const token = mkToken({ k: k.id, n: k.name, a: k.age, h: habit, e: Date.now() + 10 * 60e3 });
         return send(res, 200, { url: `${base.replace(/\/$/, '')}/?t=${encodeURIComponent(token)}` });
       }
       if (sub === 'month' && m === 'GET') return send(res, 200, (await kidView(k, false)).points);
       if (!guard) return bad(403, 'للأب أو الأم فقط');
+      if (sub === 'habit-rec' && m === 'GET') {   // استماع الأب لتسجيل ولده في وحدة (مكلمة/انطلاقة): نجلبه منها بطلب موقّع ونمرّره دون تخزين
+        const habit = url.searchParams.get('habit'), rec = String(url.searchParams.get('rid') || ''), base = habit === 'read' ? process.env.TALAQA_URL : habit === 'word' ? process.env.KALIMATI_URL : '';
+        if (!base || !/^[\w-]{1,64}$/.test(rec) || !(k.hlog || []).some(e => e.habit === habit && (e.recs || []).some(r => r.id === rec))) return bad(404, 'لا يوجد تسجيل');
+        const ts = Date.now(), sig = crypto.createHmac('sha256', HSECRET).update(`rec|${habit}|${rec}|${k.id}|${ts}`).digest('hex');
+        try {
+          const r = await fetch(`${base.replace(/\/$/, '')}/api/habit/rec/${encodeURIComponent(rec)}?kid=${encodeURIComponent(k.id)}&ts=${ts}&sig=${sig}`, { signal: AbortSignal.timeout(15000) });
+          if (!r.ok) return bad(404, 'انتهت مدة التسجيل أو لم يعد متاحاً');
+          const buf = Buffer.from(await r.arrayBuffer()); if (buf.length > 5e6) return bad(413, 'التسجيل كبير');
+          res.writeHead(200, { 'Content-Type': r.headers.get('content-type') || 'audio/webm', 'Content-Length': buf.length, 'Cache-Control': 'no-store' }); return res.end(buf);
+        } catch (_) { return bad(502, 'تعذّر الوصول إلى الوحدة'); }
+      }
       if (!sub && m === 'PUT') {
         const c = cleanKid({ ...k, ...body }); Object.assign(k, c);
         if (body.habits) k.habits = cleanHabits(body.habits);
