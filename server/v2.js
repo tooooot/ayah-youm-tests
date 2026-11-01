@@ -7,7 +7,7 @@ const sha = x => crypto.createHash('sha256').update(String(x)).digest('hex');
 const HABITS = ['ayah', 'word'];
 
 function mount(ctx) {
-  const { db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR } = ctx;
+  const { LEVELS, levelOf, db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR } = ctx;
   const fs = require('fs'), path = require('path');
   // عقد التكامل مع وحدات العادات (كلماتي): رمز موقّع قصير العمر بلا حسابات هناك، وأحداث إنجاز موقّعة تصل لسجل ثبات
   const SECRET_FILE = path.join(path.dirname(RELAY_DIR), 'habit_secret');
@@ -61,7 +61,7 @@ function mount(ctx) {
   const SPEEDS = [1, 1.15, 1.25];   // سرعة تشغيل القارئ (مع حفظ النبرة)؛ الافتراضي بالعمر: ≤8 → 1، 9–11 → 1.15، ≥12 → 1.25
   const speedOf = k => SPEEDS.includes(+k.speed) ? +k.speed : (k.age <= 8 ? 1 : k.age <= 11 ? 1.15 : 1.25);
   const habitDone = k => (date, h) => {
-    if (h === 'ayah') return k.log.some(s => s.kind === 'new' && s.date === date && s.status === 'ok');
+    if (h === 'ayah') return k.log.filter(s => s.kind === 'new' && s.date === date && s.status === 'ok').length >= LEVELS[levelOf(k)].perDay;
     return (k.hlog || []).some(e => e.date === date && e.habit === h && e.confirmed);
   };
   const inviteStatus = k => !k.invite ? 'none' : k.invite.claimedBy ? 'claimed' : 'invited';
@@ -70,7 +70,7 @@ function mount(ctx) {
     if (P.snapToday(k, today(), P.cleanPlan(k.plan || {}))) await save();
     const plan = P.cleanPlan(k.plan || {}), done = habitDone(k), recent = [];
     for (let i = 6; i >= 0; i--) { const d = P.addDays(today(), -i); recent.push({ date: d, pts: P.dayScore(d, habits, plan, done) }); }   // آخر 7 أيام بغضّ النظر عن حدود الدورة
-    const v = { ...kidState(k), habitsDone: Object.fromEntries(habits.map(h => [h, !!done(today(), h)])), recordVoice: k.recordVoice !== false, repeats: repsOf(k), speed: speedOf(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
+    const v = { ...kidState(k), habitsDone: Object.fromEntries(habits.map(h => [h, !!done(today(), h)])), recordVoice: k.recordVoice !== false, repeats: repsOf(k), quick: !!k.quick, speed: speedOf(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
     if (withInvite) { v.invite = { status: inviteStatus(k), url: k.invite ? `${ORIGIN}/i/${k.invite.token}` : null }; }
     return v;
   }
@@ -179,6 +179,7 @@ function mount(ctx) {
         const c = cleanKid({ ...k, ...body }); Object.assign(k, c);
         if (body.habits) k.habits = cleanHabits(body.habits);
         if (typeof body.recordVoice === 'boolean') k.recordVoice = body.recordVoice;
+        if (body.level !== undefined && LEVELS[+body.level]) k.level = +body.level;
         if (body.speed !== undefined && SPEEDS.includes(+body.speed)) k.speed = +body.speed;
         if (body.repeats !== undefined) k.repeats = Math.max(3, Math.min(10, Math.round(+body.repeats) || 10));
         if (body.plan) { k.plan = P.cleanPlan({ ...(k.plan || {}), ...body.plan }); P.snapToday(k, today(), k.plan); k.snaps[today()] = (() => { const cy = P.cycleOf(today(), k.plan.cycleDay), mx = 100 * P.activeDays(cy, k.plan); return k.plan.mode === 'none' || !mx ? 0 : k.plan.amount / mx; })(); }

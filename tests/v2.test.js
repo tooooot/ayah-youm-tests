@@ -205,3 +205,11 @@ test('سرعة القارئ: افتراضي بالعمر ويُحصر في ال�
   assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + a.id, { speed: 1.25 })).j.speed, 1.25);
   assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + a.id, { speed: 3 })).j.speed, 1.25, 'قيمة غير مسموحة تُتجاهل');
 });
+
+test('مستوى الحفظ: الهدف اليومي يتبع المستوى والنقاط عند إتمامه', async () => {
+  const dad = await G('dad14'); await E.call(dad, 'POST', '/api/v2/family', { name: 'مستوى' });
+  const kid = (await E.call(dad, 'POST', '/api/v2/kids', { name: 'ل', age: 9 })).j;
+  assert.equal(kid.level, 1); assert.equal(kid.target, 1);
+  const up = (await E.call(dad, 'PUT', '/api/v2/kids/' + kid.id, { level: 2 })).j; assert.equal(up.level, 2); assert.equal(up.target, 2);
+  assert.equal((await E.call(dad, 'PUT', '/api/v2/kids/' + kid.id, { level: 9 })).j.level, 2, 'قيمة غير مسموحة تُتجاهل');
+});

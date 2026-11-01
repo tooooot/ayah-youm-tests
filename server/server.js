@@ -18,6 +18,9 @@ const SURAH = Object.fromEntries(Q.map(s => [s.n, s]));
 const STARTS = Q.map(s => s.n);
 const INT = [1, 3, 7, 30, 30]; // فواصل المراجعة بالأيام
 const REVIEW_CAP = 3;
+// مستويات الحفظ (يختارها الأب): آيات جديدة يومياً وحد المراجعات اليومية
+const LEVELS = { 1: { perDay: 1, rev: 3, name: 'مبتدئ' }, 2: { perDay: 2, rev: 5, name: 'ثابت' }, 3: { perDay: 3, rev: 7, name: 'نشيط' }, 4: { perDay: 4, rev: 10, name: 'مجتهد' } };
+const levelOf = k => (LEVELS[k.level] ? +k.level : 1);
 
 // ───────── التخزين ─────────
 fs.mkdirSync(BACKUPS, { recursive: true });
@@ -103,12 +106,13 @@ function kidState(kid) {
     }
   }
   const newDays = new Set(kid.log.filter(s => s.kind === 'new' && s.status !== 'rejected').map(s => s.date));
-  const newToday = newDays.has(t);
+  const lv = LEVELS[levelOf(kid)], todayNew = kid.log.filter(s => s.kind === 'new' && s.date === t && s.status !== 'rejected').length;
+  const newToday = todayNew >= lv.perDay;   // أتمّ هدف اليوم من الآيات الجديدة
   const reviewedToday = kid.log.filter(s => s.kind === 'review' && s.date === t).length;
   const due = [...mem].map(([key, m]) => ({ key, due: addDays(m.last, INT[m.stage]) }))
     .filter(x => x.due <= t && mem.get(x.key).last !== t)
     .sort((a, b) => a.due < b.due ? -1 : 1);
-  const reviews = due.slice(0, Math.max(0, REVIEW_CAP - reviewedToday)).map(x => unitOf(x.key));
+  const reviews = due.slice(0, Math.max(0, lv.rev - reviewedToday)).map(x => unitOf(x.key));
   const next = queue(kid.start).find(u => !mem.has(u.key));
   const streakFrom = (floor) => {
     let d = newDays.has(t) ? t : addDays(t, -1), c = 0;
@@ -123,7 +127,7 @@ function kidState(kid) {
     id: kid.id, name: kid.name, age: kid.age, start: kid.start, startName: SURAH[kid.start].name,
     reward: kid.reward, rewardDays: kid.rewardDays, time: kid.time,
     streak: streakFrom(null), rewardProg: Math.min(streakFrom(kid.rewardSince || null), kid.rewardDays),
-    newToday, memorized: mem.size, reviewsDue: due.length, last14, weekNew, pending,
+    level: levelOf(kid), levelName: lv.name, target: lv.perDay, newToday, memorized: mem.size, reviewsDue: due.length, last14, weekNew, pending,
     next: next ? unitOf(next.key) : null, finished: !next,
     todayCount: kid.log.filter(x => x.kind === 'new' && x.date === t && x.status !== 'rejected').length,
     todayUnit: (() => { const l = kid.log.filter(x => x.kind === 'new' && x.date === t && x.status !== 'rejected').pop(); return l ? unitOf(l.key) : null; })(),
@@ -209,7 +213,7 @@ async function submitResult(k, body) {
   return { ok: true };
 }
 
-var V2 = require('./v2').mount({ db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR });
+var V2 = require('./v2').mount({ LEVELS, levelOf, db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR });
 if (V2.migrate()) { try { fs.copyFileSync(DB_FILE, path.join(DATA_DIR, 'db.pre-v2.json')); } catch (_) {} save(); }
 const authHandler = require('./auth').mount({ db, save, rid, today, ORIGIN, send, readBody, V2 });
 const TEAM = process.env.APPLE_TEAM_PUB || '823299AJGN', BUNDLE = 'net.wardyat.thabat';

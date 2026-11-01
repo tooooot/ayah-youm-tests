@@ -258,6 +258,14 @@ async function kidForm(k) {   // نموذج تعديل بيانات الولد: 
   return [el('label', {}, 'الاسم'), name, el('label', {}, 'العمر'), age, el('label', {}, 'الخطة تبدأ من سورة'), start, el('div', { class: 'sw' }, el('span', {}, 'آية اليوم'), el('button', { class: 'toggle on', 'aria-label': 'آية اليوم', disabled: true })), wordRow,
     el('button', { class: 'btn', onclick: async () => { try { await api('v2/kids/' + k.id, 'PUT', { name: name.value, age: +age.value, start: +start.value, habits: [...habitSet] }); toast('تم الحفظ'); kidDetail(k.id); } catch (e) { toast(errMsg(e)); } } }, 'حفظ البيانات')];
 }
+const LEVEL_CARDS = [[1, 'مبتدئ', 'آية جديدة يومياً وحتى 3 مراجعات. مناسب للبداية والصغار.'], [2, 'ثابت', 'آيتان يومياً وحتى 5 مراجعات. لمن ثبّت عادته.'], [3, 'نشيط', '3 آيات يومياً وحتى 7 مراجعات.'], [4, 'مجتهد', '4 آيات يومياً وحتى 10 مراجعات. للأقوى حفظاً.']];
+function levelCard(k) {   // مستوى الحفظ: كم آية جديدة ومراجعة كل يوم، مع تقدير زمنه من متوسط ولدك الفعلي
+  const cur = k.level || 1, mins = (n, r) => { const a = k.avgNewSecs, b = k.avgReviewSecs; return a ? Math.max(1, Math.round((a * n + (b || a * .5) * Math.min(r, k.reviewsDue || r)) / 60)) : null; };
+  const list = el('div', { class: 'levels' }, LEVEL_CARDS.map(([v, name, desc]) => { const per = v, rev = [0, 3, 5, 7, 10][v], m = mins(per, rev);
+    return el('button', { class: 'lvl' + (v === cur ? ' on' : ''), onclick: async e => { try { await api('v2/kids/' + k.id, 'PUT', { level: v }); [...list.children].forEach(c => c.classList.remove('on')); e.currentTarget.classList.add('on'); toast('تم ضبط المستوى'); } catch (er) { toast(errMsg(er)); } } },
+      el('b', {}, name), el('span', { class: 'mute' }, desc), m ? el('span', { class: 'chip' }, `≈ ${m} دقيقة يومياً (من متوسط ${k.name})`) : ''); }));
+  return el('div', { class: 'card' }, el('h2', {}, 'مستوى الحفظ'), el('p', { class: 'mute' }, 'اختر ما يناسب ولدك الآن؛ يمكنك رفعه أو خفضه في أي وقت. تُحسب نقاط الحفظ كاملة عند إتمام عدد آيات يومه.'), list);
+}
 function repeatsCard(k) {   // عدد التكرارات لكل مقطع صوتي (استماعاً ثم ترديداً)
   const cur = k.repeats || 10, d = el('div', { class: 'seg' }, [[10, '10 (الأكمل)'], [7, '7'], [5, '5'], [3, '3']].map(([v, t]) => el('button', { class: v === cur ? 'on' : '', onclick: async e => { try { await api('v2/kids/' + k.id, 'PUT', { repeats: v }); [...d.children].forEach(c => c.classList.toggle('on', c === e.target)); toast('تم ضبط التكرار'); } catch (er) { toast(errMsg(er)); } } }, t)));
   return el('div', { class: 'card' }, el('h2', {}, 'تكرار الحلقة'), el('p', { class: 'mute' }, 'كم مرة يستمع ولدك ثم يردد كل مقطع من الآية. الأكمل 10، وللأصغر أو الآيات الطويلة اختر أقل ليقصر الدرس.'), d);
@@ -280,6 +288,7 @@ function kidDetail(id) {
     return el('div', {}, el('div', { class: 'row', style: 'margin-bottom:12px' }, avatar(k.name, idx, 56), el('div', { class: 'grow' }, el('h1', { style: 'margin:0' }, k.name), statusChip(k))),
       ...(pendingBox(k) ? [pendingBox(k)] : []), inv,
       el('div', { class: 'card' }, el('h2', {}, 'المكافأة والنقاط'), el('p', { class: 'mute' }, 'كل يوم كامل = 100 نقطة. التطبيق لا يدفع؛ أنت تسلّم المكافأة.'), rw.node, el('button', { class: 'btn', onclick: async () => { try { await rw.save(); } catch (e) { toast(errMsg(e)); } } }, 'حفظ المكافأة')),
+      levelCard(k),
       repeatsCard(k),
       speedCard(k),
       el('div', { class: 'card' }, el('div', { class: 'sw' }, el('div', {}, el('h2', { style: 'margin:0' }, 'تسجيل التسميع'), el('div', { class: 'mute' }, 'يُسجَّل صوت ولدك أثناء التسميع ويبقى على جهازه 14 يوماً. وإن لم يتحقق التطبيق من تسميعه تصلك نسخة مؤقتة لتسمعها (تُحذف بعد قرارك أو بعد 72 ساعة).')),
@@ -316,7 +325,7 @@ function todayTab() {
       if (s.newToday) cards.push(el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av0' }, ic('check')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'أحسنت! أتممت آية اليوم'), el('div', { class: 'mute' }, s.pending.length ? 'بانتظار تأكيد أبيك' : 'ثبّتها بالتدريب إن أردت'))),
         s.todayUnit ? el('button', { class: 'btn ghost', onclick: () => { location.href = lessonUrl(p.kidId, 'practice'); } }, `درّب ${s.todayUnit.name} ${s.todayUnit.i}`) : '',
         s.next && s.todayCount < 4 ? el('button', { class: 'btn gold', onclick: () => { location.href = lessonUrl(p.kidId, 'new', null, true); } }, `آية إضافية: ${s.next.name} ${s.next.i}`) : ''));
-      else cards.push(el('div', { class: 'ayahcard' }, el('div', { class: 'tag' }, `آية اليوم · سورة ${s.next.name} — ${s.next.i}`), el('div', { class: 'q' }, s.next.t), el('button', { class: 'btn gold', onclick: () => { location.href = lessonUrl(p.kidId, 'new'); } }, 'ابدأ الآن')));
+      else cards.push(el('div', { class: 'ayahcard' }, el('div', { class: 'tag' }, `آية اليوم${s.target > 1 ? ` (${s.todayCount + 1} من ${s.target})` : ''} · سورة ${s.next.name} — ${s.next.i}`), el('div', { class: 'q' }, s.next.t), el('button', { class: 'btn gold', onclick: () => { location.href = lessonUrl(p.kidId, 'new'); } }, 'ابدأ الآن')));
     } else cards.push(empty('star', 'ما شاء الله! أتممت خطتك', 'اطلب من أبيك خطة جديدة.'));
     if ((s.habits || []).includes('word') && CFG.kalimati) {   // كلمة اليوم (كلماتي): تُفتح برمز موقّع قصير العمر، والإنجاز يصلنا تلقائياً
       const wd = s.habitsDone && s.habitsDone.word;
