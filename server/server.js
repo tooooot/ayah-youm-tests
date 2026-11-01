@@ -181,7 +181,7 @@ const cleanKid = b => {
     reward: String(b.reward || '').trim().slice(0, 80),
     rewardDays: Math.max(3, Math.min(60, +b.rewardDays || 7)),
     time: /^\d{2}:\d{2}$/.test(b.time || '') ? b.time : '06:30',
-    habits: Array.isArray(b.habits) && b.habits.length ? b.habits.filter(h => ['ayah', 'word', 'read'].includes(h)) : ['ayah'],
+    habits: Array.isArray(b.habits) && b.habits.length ? b.habits.filter(h => ['ayah', 'word', 'read', 'read_en'].includes(h)) : ['ayah'],
     plan: require('./points').cleanPlan(b.plan || {}),
   };
 };
@@ -239,7 +239,8 @@ const server = http.createServer(async (req, res) => {
     if (/^\/i\/[\w-]+$/.test(p)) return serveFile(req, res, path.join(SITE, 'app.html'), 'no-store');   // دعوة ابن: التطبيق الجديد يعالجها
     if (p === '/manifest.webmanifest') return send(res, 200, { name: 'ثبات', short_name: 'ثبات', start_url: '/app', display: 'standalone', orientation: 'portrait', lang: 'ar', dir: 'rtl', background_color: '#0f3d33', theme_color: '#0f3d33', icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] }, 'application/manifest+json');
     if (/^\/lesson\/[\w-]+$/.test(p)) return serveFile(req, res, path.join(SITE, 'kid.html'), 'no-store');   // شاشة الدرس بجلسة الحساب
-    const rel = p === '/' ? '/index.html' : p;
+    if (p === '/') return serveFile(req, res, path.join(SITE, 'app.html'), 'no-store');
+    const rel = p;
     const file = path.normalize(path.join(SITE, rel));
     if (!file.startsWith(SITE + path.sep)) return send(res, 403, { error: 'no' });
     const cache = /^\/(audio|audio-fast|audio-sud|audio-ab|fonts)\//.test(rel) ? 'public, max-age=31536000, immutable' : 'no-cache';

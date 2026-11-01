@@ -80,7 +80,7 @@ function mount(ctx) {
     if (P.snapToday(k, today(), P.cleanPlan(k.plan || {}))) await save();
     const plan = P.cleanPlan(k.plan || {}), done = habitDone(k), recent = [];
     for (let i = 6; i >= 0; i--) { const d = P.addDays(today(), -i); recent.push({ date: d, pts: P.dayScore(d, habits, plan, done) }); }   // آخر 7 أيام بغضّ النظر عن حدود الدورة
-    const v = { ...kidState(k), habitsDone: Object.fromEntries(habits.map(h => [h, !!done(today(), h)])), recordVoice: k.recordVoice !== false, repeats: repsOf(k), quick: !!k.quick, placement: k.placement || null, skills: withInvite ? skillsOf(k) : undefined, suggestion: suggestLevel(k), speed: speedOf(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
+    const v = { ...kidState(k), habitsDone: Object.fromEntries(habits.map(h => [h, !!done(today(), h)])), habitPts: Object.fromEntries(Object.entries(P.weightsOf(habits, P.cleanPlan(k.plan || {}))).map(([h, w]) => [h, Math.round(w * 100)])), recordVoice: k.recordVoice !== false, repeats: repsOf(k), quick: !!k.quick, placement: k.placement || null, skills: withInvite ? skillsOf(k) : undefined, suggestion: suggestLevel(k), speed: speedOf(k), habits, plan, points: P.summary(k, today(), habits, done), recent };
     if (withInvite) { v.invite = { status: inviteStatus(k), url: k.invite ? `${ORIGIN}/i/${k.invite.token}` : null }; }
     return v;
   }

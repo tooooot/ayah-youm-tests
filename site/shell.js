@@ -344,25 +344,31 @@ function todayTab() {
     if (!srOk) cards.push(el('div', { class: 'note', style: 'margin-bottom:12px' }, 'هذا المتصفح لا يدعم سماع التسميع بالصوت. افتح ثبات من Chrome (أندرويد أو كمبيوتر) أو من تطبيق ثبات، وإلا سيحتاج تسميعك إلى أن يسمعك أبوك ويؤكد.'));
     cards.push(el('div', { class: 'hero' }, el('div', { class: 'ringwrap' }, ring(Math.round(pts.pointsToday), 100, Math.round(pts.pointsToday)),
       el('div', {}, el('div', { class: 'mute' }, `السلام عليكم يا ${s.name}`), el('h1', { style: 'margin:2px 0' }, `نقاط اليوم: ${Math.round(pts.pointsToday)} من 100`), el('div', { class: 'mute' }, `${s.streak} ${s.streak === 1 ? 'يوم متواصل' : 'أيام متواصلة'}`)))));
+    const hs = s.habits || [], hd = s.habitsDone || {}, hp = s.habitPts || {}, chips = [];
+    if (!s.finished) chips.push(['hb-ayah', 'آية اليوم', !!s.newToday, hp.ayah]);
+    if (hs.includes('word') && CFG.kalimati) chips.push(['hb-word', 'كلماتي', !!hd.word, hp.word]);
+    if (hs.includes('read') && CFG.talaqa) chips.push(['hb-read', 'انطلاقة', !!hd.read, hp.read]);
+    if (hs.includes('read_en') && CFG.talaqa) chips.push(['hb-read_en', 'انطلاقة EN', !!hd.read_en, hp.read_en]);
+    if (chips.length > 1) cards.push(el('div', { class: 'hstrip' }, chips.map(([id, nm, dn, pt]) => el('button', { class: 'hchip' + (dn ? ' done' : ''), 'aria-label': nm + (dn ? ' منجز' : ' غير منجز'), onclick: () => { const t = document.getElementById(id); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }, el('span', { class: 'hm' }, dn ? '✓' : '○'), nm, pt != null ? el('span', { class: 'hpt' }, `${dn ? pt : 0}/${pt}`) : '')), el('div', { class: 'mute hcount' }, `أنجزتَ ${chips.filter(c => c[2]).length} من ${chips.length} · ${chips.reduce((a, c) => a + (c[2] ? (c[3] || 0) : 0), 0)} نقطة من 100`)));
     if (!s.finished) {
-      if (s.newToday) cards.push(el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av0' }, ic('check')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'أحسنت! أتممت آية اليوم'), el('div', { class: 'mute' }, s.pending.length ? 'بانتظار تأكيد أبيك' : 'ثبّتها بالتدريب إن أردت'))),
+      if (s.newToday) cards.push(el('div', { class: 'card', id: 'hb-ayah' }, el('div', { class: 'row' }, el('div', { class: 'avatar av0' }, ic('check')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'أحسنت! أتممت آية اليوم'), el('div', { class: 'mute' }, s.pending.length ? 'بانتظار تأكيد أبيك' : 'ثبّتها بالتدريب إن أردت'))),
         s.todayUnit ? el('button', { class: 'btn ghost', onclick: () => { location.href = lessonUrl(p.kidId, 'practice'); } }, `درّب ${s.todayUnit.name} ${s.todayUnit.i}`) : '',
         s.next && s.todayCount < 4 ? el('button', { class: 'btn gold', onclick: () => { location.href = lessonUrl(p.kidId, 'new', null, true); } }, `آية إضافية: ${s.next.name} ${s.next.i}`) : ''));
-      else cards.push(el('div', { class: 'ayahcard' }, el('div', { class: 'tag' }, `آية اليوم${s.target > 1 ? ` (${s.todayCount + 1} من ${s.target})` : ''} · سورة ${s.next.name} — ${s.next.i}`), el('div', { class: 'q' }, s.next.t), el('button', { class: 'btn gold', onclick: () => { location.href = lessonUrl(p.kidId, 'new'); } }, 'ابدأ الآن')));
+      else cards.push(el('div', { class: 'ayahcard', id: 'hb-ayah' }, el('div', { class: 'tag' }, `آية اليوم${s.target > 1 ? ` (${s.todayCount + 1} من ${s.target})` : ''} · سورة ${s.next.name} — ${s.next.i}`), el('div', { class: 'q' }, s.next.t), el('button', { class: 'btn gold', onclick: () => { location.href = lessonUrl(p.kidId, 'new'); } }, 'ابدأ الآن')));
     } else cards.push(empty('star', 'ما شاء الله! أتممت خطتك', 'اطلب من أبيك خطة جديدة.'));
     if ((s.habits || []).includes('word') && CFG.kalimati) {   // كلماتي (كلماتي): تُفتح برمز موقّع قصير العمر، والإنجاز يصلنا تلقائياً
       const wd = s.habitsDone && s.habitsDone.word;
-      cards.push(el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, wd ? ic('check') : ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'كلماتي'), el('div', { class: 'mute' }, wd ? 'أحسنت! أتممت كلمات اليوم' : 'تعلّم كلمات إنجليزية جديدة وراجع السابقة'))),
+      cards.push(el('div', { class: 'card', id: 'hb-word' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, wd ? ic('check') : ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'كلماتي'), el('div', { class: 'mute' }, wd ? 'أحسنت! أتممت كلمات اليوم' : 'تعلّم كلمات إنجليزية جديدة وراجع السابقة'))),
         el('button', { class: wd ? 'btn ghost' : 'btn gold', onclick: async () => { try { const r = await api(`v2/kids/${p.kidId}/habit-token?habit=word`); location.href = r.url; } catch (e) { toast(errMsg(e)); } } }, wd ? 'راجع مرة أخرى' : 'ابدأ كلماتي')));
     }
     if ((s.habits || []).includes('read') && CFG.talaqa) {   // انطلاقة (طلاقة): الوحدة تقيس قراءة الولد بنفسها وتبلّغنا بالإنجاز
       const rd = s.habitsDone && s.habitsDone.read;
-      cards.push(el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, rd ? ic('check') : ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'انطلاقة'), el('div', { class: 'mute' }, rd ? 'أحسنت! أتممت انطلاقة اليوم' : 'اقرأ قطعة بصوت عالٍ وسيسمعك التطبيق'))),
+      cards.push(el('div', { class: 'card', id: 'hb-read' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, rd ? ic('check') : ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'انطلاقة'), el('div', { class: 'mute' }, rd ? 'أحسنت! أتممت انطلاقة اليوم' : 'اقرأ قطعة بصوت عالٍ وسيسمعك التطبيق'))),
         el('button', { class: rd ? 'btn ghost' : 'btn gold', onclick: async () => { try { const r = await api(`v2/kids/${p.kidId}/habit-token?habit=read`); location.href = r.url; } catch (e) { toast(errMsg(e)); } } }, rd ? 'اقرأ مرة أخرى' : 'ابدأ القراءة')));
     }
     if ((s.habits || []).includes('read_en') && CFG.talaqa) {   // انطلاقة بالإنجليزية: مهارة منفصلة بإنجازها الخاص
       const re = s.habitsDone && s.habitsDone.read_en;
-      cards.push(el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, re ? ic('check') : ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'انطلاقة (إنجليزي)'), el('div', { class: 'mute' }, re ? 'Great! أتممت قراءة اليوم' : 'اقرأ قطعة إنجليزية بصوت عالٍ وسيسمعك التطبيق'))),
+      cards.push(el('div', { class: 'card', id: 'hb-read_en' }, el('div', { class: 'row' }, el('div', { class: 'avatar av2' }, re ? ic('check') : ic('star')), el('div', { class: 'grow' }, el('h2', { style: 'margin:0' }, 'انطلاقة (إنجليزي)'), el('div', { class: 'mute' }, re ? 'Great! أتممت قراءة اليوم' : 'اقرأ قطعة إنجليزية بصوت عالٍ وسيسمعك التطبيق'))),
         el('button', { class: re ? 'btn ghost' : 'btn gold', onclick: async () => { try { const r = await api(`v2/kids/${p.kidId}/habit-token?habit=read_en`); location.href = r.url; } catch (e) { toast(errMsg(e)); } } }, re ? 'اقرأ مرة أخرى' : 'ابدأ القراءة بالإنجليزية')));
     }
     if (s.reviews.length) cards.push(el('div', { class: 'card' }, el('h2', {}, 'مراجعة اليوم'), s.reviews.map(u => el('button', { class: 'btn ghost', onclick: () => { location.href = lessonUrl(p.kidId, 'review', u.key); } }, `راجع: ${u.name} ${u.i}`))));
