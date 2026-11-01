@@ -104,7 +104,7 @@ function stopAudio() { if (audio) { audio.onended = null; audio.pause(); audio =
 const audioOf = key => new Audio('/audio/' + key + '.mp3');
 
 async function load() {
-  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json?v=20261101ab').then(r => r.json()).catch(() => ({})); S = await api(stateApi()); RATE = Math.max(.8, Math.min(1.5, +S.speed || 1)); if (V2) return startV2(); home(); }
+  try { await Mushaf.init(); PLAN = await fetch('/data/plan.json?v=20261101ac').then(r => r.json()).catch(() => ({})); S = await api(stateApi()); RATE = Math.max(.8, Math.min(1.5, +S.speed || 1)); if (V2) return startV2(); home(); }
   catch (e) { if (V2) return void (location.href = '/app'); show(el('div', { class: 'card' }, el('h2', {}, 'الرابط غير صحيح'), el('p', { class: 'mute' }, 'اطلب من أبيك الرابط الخاص بك.'))); }
 }
 // الوضع الجديد: التطبيق يفتح الدرس مباشرة بحسب kind وkey في الرابط

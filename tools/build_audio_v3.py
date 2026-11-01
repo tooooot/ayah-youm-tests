@@ -39,10 +39,12 @@ for s in q:
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-ss', f'{start:.3f}', '-to', f'{end:.3f}', '-i', mp3, '-ac', '1', '-ar', '24000', '-b:a', '64k', out], check=True)
         df = round(os.path.getsize(out) * 8 / 64000, 2)
         fs = [[x[0] - 1, round(max(0, x[1] / 1000 - start), 2), round(x[2] / 1000 - start, 2)] for x in segs]
-        if len(segs) != n: bad.append((k, len(segs), n))
+        last = {x[0]: i for i, x in enumerate(fs)}   # كلمات يكرّرها القارئ: تبقى القراءة الأخيرة
+        fs = [x for i, x in enumerate(fs) if last[x[0]] == i]
+        if len(fs) != n: bad.append((k, len(fs), n))
         e = {'ds': old[k]['ds'], 'df': df, 'fs': fs, 'ss': old[k]['ss']}
         if 'ch' in old[k]:
-            if len(segs) != n: e['ch'] = old[k]['ch']; report.append({'ayah': k, 'error': 'segments mismatch: kept old chunks'})
+            if len(fs) != n: e['ch'] = old[k]['ch']; report.append({'ayah': k, 'error': 'segments mismatch: kept old chunks'})
             else:
                 st = {x[0]: (x[1], x[2]) for x in fs}; chs = old[k]['ch']; cuts = []
                 for c in chs[:-1]:
