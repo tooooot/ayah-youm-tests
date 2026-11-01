@@ -31,6 +31,7 @@ let RATE = 1;   // تُضبط من حالة الولد بعد التحميل
 const resultApi = () => 'v2/kids/' + TOKEN + '/result';
 const app = $('#app');
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const IOS_WEB = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);   // Safari على آيفون: الميكروفون لا يُشارَك بين التسجيل والتعرّف، فيُعطَّل التسجيل ليعمل التعرّف
 let S = null;            // حالة الولد من الخادم
 let audio = null;
 
@@ -434,7 +435,7 @@ function lesson(u, kind, extra) {
     let rec = null, heardAlts = [];
     // تسجيل صوت الولد أثناء التسميع (V2 فقط): يُحفظ على جهازه 14 يوماً، وتُرسل نسخة مؤقتة للأب إن بقي التسميع معلّقاً
     const canRec = V2 && kind !== 'practice' && S.recordVoice !== false && Rec.supported();
-    let recorder = null, lastBlob = null, recErr = '', noConc = !!window.NATIVE;   // التسجيل المتزامن مع التعرّف يُعطَّل تلقائياً إن تعارض الميكروفون (وفي التطبيق المثبّت دائماً)
+    let recorder = null, lastBlob = null, recErr = '', noConc = !!window.NATIVE || IOS_WEB;   // التسجيل المتزامن مع التعرّف يُعطَّل تلقائياً إن تعارض الميكروفون (وفي التطبيق المثبّت دائماً)
     const startRec = async () => { if (!canRec) return; lastBlob = null; recorder = Rec.recorder(); try { await recorder.start(); recErr = ''; } catch (e) { recorder = null; recErr = e && e.name || 'err'; } };
     const stopRec = async () => { if (!recorder) return; try { lastBlob = await recorder.stop(); } catch (_) {} recorder = null; };
 
