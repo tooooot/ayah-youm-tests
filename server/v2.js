@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const P = require('./points.js');
 
 const sha = x => crypto.createHash('sha256').update(String(x)).digest('hex');
-const HABITS = ['ayah', 'word', 'read'];
+const HABITS = ['ayah', 'word', 'read', 'read_en'];
 
 function mount(ctx) {
   const { queue, unitOf, LEVELS, levelOf, db, save, rid, today, ORIGIN, send, readBody, kidState, cleanKid, submitResult, snapshot, relayOf, dropRelay, dropKidRelays, RELAY_DIR } = ctx;
@@ -65,8 +65,8 @@ function mount(ctx) {
     return (k.hlog || []).some(e => e.date === date && e.habit === h && e.confirmed);
   };
   const inviteStatus = k => !k.invite ? 'none' : k.invite.claimedBy ? 'claimed' : 'invited';
-  // مهارات الولد غير الحفظ (مكلمة، انطلاقة): آخر 7 أيام وآخر نتيجة وتسجيلات الاستماع (للأب)
-  const SKILL_NAMES = { word: 'مكلمة', read: 'انطلاقة' };
+  // مهارات الولد غير الحفظ (كلماتي، انطلاقة): آخر 7 أيام وآخر نتيجة وتسجيلات الاستماع (للأب)
+  const SKILL_NAMES = { word: 'كلماتي', read: 'انطلاقة', read_en: 'انطلاقة (إنجليزي)' };
   const skillsOf = k => (k.habits || []).filter(h => h !== 'ayah').map(h => {
     const t = today(), log = (k.hlog || []).filter(e => e.habit === h), by = Object.fromEntries(log.map(e => [e.date, e]));
     const days = []; for (let i = 6; i >= 0; i--) { const d = P.addDays(t, -i); days.push({ date: d, done: !!(by[d] && by[d].confirmed) }); }
@@ -109,7 +109,7 @@ function mount(ctx) {
       const sig = String(req.headers['x-signature'] || ''), want = crypto.createHmac('sha256', HSECRET).update(raw).digest('hex');
       if (sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return send(res, 401, { error: 'توقيع غير صحيح' });
       let b; try { b = JSON.parse(raw.toString('utf8')); } catch (_) { return send(res, 400, { error: 'JSON' }); }
-      if (!['word', 'read'].includes(b.habit) || !/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return send(res, 400, { error: 'حدث غير صحيح' });
+      if (!['word', 'read', 'read_en'].includes(b.habit) || !/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return send(res, 400, { error: 'حدث غير صحيح' });
       for (const f of db.families) { const k = f.kids.find(x => x.id === b.kidId); if (!k) continue;
         k.hlog = k.hlog || [];
         // التفاصيل (عقد v2): إحصاءات موجزة وقائمة تسجيلات (الصوت يبقى في الوحدة ويُجلب عند الاستماع)
@@ -200,15 +200,15 @@ function mount(ctx) {
       if (sub === 'state' && m === 'GET') return send(res, 200, await kidView(k, guard));
       if (sub === 'result' && m === 'POST') { const r = await submitResult(k, body); return r.err ? bad(r.err[0], r.err[1]) : send(res, 200, await kidView(k, guard)); }
       if (sub === 'habit-token' && m === 'GET') {   // رمز موقّع لفتح وحدة العادة بهوية الولد دون حساب هناك
-        const habit = url.searchParams.get('habit') || 'word', base = habit === 'read' ? process.env.TALAQA_URL : process.env.KALIMATI_URL;
-        if (!base || !['word', 'read'].includes(habit) || !(k.habits || []).includes(habit)) return bad(503, habit === 'read' ? 'عادة القراءة غير مفعّلة' : 'عادة الكلمة غير مفعّلة');
+        const habit = url.searchParams.get('habit') || 'word', base = (habit === 'read' || habit === 'read_en') ? process.env.TALAQA_URL : process.env.KALIMATI_URL;
+        if (!base || !['word', 'read', 'read_en'].includes(habit) || !(k.habits || []).includes(habit)) return bad(503, habit === 'read_en' ? 'عادة القراءة بالإنجليزية غير مفعّلة' : habit === 'read' ? 'عادة القراءة غير مفعّلة' : 'عادة الكلمة غير مفعّلة');
         const token = mkToken({ k: k.id, n: k.name, a: k.age, h: habit, e: Date.now() + 10 * 60e3 });
         return send(res, 200, { url: `${base.replace(/\/$/, '')}/?t=${encodeURIComponent(token)}` });
       }
       if (sub === 'month' && m === 'GET') return send(res, 200, (await kidView(k, false)).points);
       if (!guard) return bad(403, 'للأب أو الأم فقط');
-      if (sub === 'habit-rec' && m === 'GET') {   // استماع الأب لتسجيل ولده في وحدة (مكلمة/انطلاقة): نجلبه منها بطلب موقّع ونمرّره دون تخزين
-        const habit = url.searchParams.get('habit'), rec = String(url.searchParams.get('rid') || ''), base = habit === 'read' ? process.env.TALAQA_URL : habit === 'word' ? process.env.KALIMATI_URL : '';
+      if (sub === 'habit-rec' && m === 'GET') {   // استماع الأب لتسجيل ولده في وحدة (كلماتي/انطلاقة): نجلبه منها بطلب موقّع ونمرّره دون تخزين
+        const habit = url.searchParams.get('habit'), rec = String(url.searchParams.get('rid') || ''), base = (habit === 'read' || habit === 'read_en') ? process.env.TALAQA_URL : habit === 'word' ? process.env.KALIMATI_URL : '';
         if (!base || !/^[\w-]{1,64}$/.test(rec) || !(k.hlog || []).some(e => e.habit === habit && (e.recs || []).some(r => r.id === rec))) return bad(404, 'لا يوجد تسجيل');
         const ts = Date.now(), sig = crypto.createHmac('sha256', HSECRET).update(`rec|${habit}|${rec}|${k.id}|${ts}`).digest('hex');
         try {

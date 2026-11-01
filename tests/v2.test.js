@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { startEnv } = require('./helpers.js');
 let E, MOD, modLog = [];
 before(async () => {
-  // وحدة مكلمة مزيّفة: تتحقق من توقيع طلب التسجيل وتُرجع صوتاً (السرّ يُقرأ بعد إقلاع الخادم)
+  // وحدة كلماتي مزيّفة: تتحقق من توقيع طلب التسجيل وتُرجع صوتاً (السرّ يُقرأ بعد إقلاع الخادم)
   const http = require('http'); MOD = http.createServer((req, res) => { const u = new URL(req.url, 'http://x'), m = u.pathname.match(/^\/api\/habit\/rec\/([\w-]+)$/); if (!m) { res.writeHead(404); return res.end(); }
     const secret = require('fs').readFileSync(require('path').join(E.dir, 'habit_secret'), 'utf8').trim(), want = crypto.createHmac('sha256', secret).update(`rec|word|${m[1]}|${u.searchParams.get('kid')}|${u.searchParams.get('ts')}`).digest('hex');
     modLog.push({ rec: m[1], ok: u.searchParams.get('sig') === want }); if (u.searchParams.get('sig') !== want) { res.writeHead(401); return res.end(); } res.writeHead(200, { 'Content-Type': 'audio/webm' }); res.end(Buffer.from('AUDIO')); });
@@ -230,7 +230,7 @@ test('اختبار المستوى: ست آيات عشوائية ثم نتيجة 
   assert.equal((await E.call(dad, 'POST', '/api/v2/kids/' + kid.id + '/placement', { answers: ans.slice(0, 2) })).r.status, 400);
 });
 
-test('مهارات مكلمة/انطلاقة: إحصاءات وتسجيلات في الحدث، وجلب التسجيل بطلب موقّع للأب فقط', async () => {
+test('مهارات كلماتي/انطلاقة: إحصاءات وتسجيلات في الحدث، وجلب التسجيل بطلب موقّع للأب فقط', async () => {
   const http = require('http'), fsx = require('fs'), pathx = require('path');
   const secret = fsx.readFileSync(pathx.join(E.dir, 'habit_secret'), 'utf8').trim();
   const dad = await G('dad17'); await E.call(dad, 'POST', '/api/v2/family', { name: 'مهارات' });
@@ -240,7 +240,7 @@ test('مهارات مكلمة/انطلاقة: إحصاءات وتسجيلات ف
   assert.equal((await post({ kidId: kid.id, habit: 'word', date: today, units: 1, secs: 120, stats: { text: 'نطق 4 من 5' }, recs: [{ id: 'r1', secs: 8, label: 'apple' }, { id: 'bad id', secs: 3 }] })).status, 200);
   assert.equal((await post({ kidId: kid.id, habit: 'word', date: today, units: 1, recs: [{ id: 'r2', secs: 6, label: 'cat' }, { id: 'r1', secs: 8 }] })).status, 200, 'إعادة الإرسال تضيف التسجيل الجديد فقط');
   const sk = (await E.call(dad, 'GET', '/api/v2/kids/' + kid.id + '/state')).j.skills;
-  assert.equal(sk.length, 1); assert.equal(sk[0].name, 'مكلمة'); assert.deepEqual(sk[0].recs.map(r => r.rid).sort(), ['r1', 'r2']); assert.equal(sk[0].last.stats.text, 'نطق 4 من 5'); assert.equal(sk[0].days[6].done, true);
+  assert.equal(sk.length, 1); assert.equal(sk[0].name, 'كلماتي'); assert.deepEqual(sk[0].recs.map(r => r.rid).sort(), ['r1', 'r2']); assert.equal(sk[0].last.stats.text, 'نطق 4 من 5'); assert.equal(sk[0].days[6].done, true);
   const rr = await fetch(E.base + `/api/v2/kids/${kid.id}/habit-rec?habit=word&rid=r1`, { headers: { 'x-session': dad } });
   assert.equal(rr.status, 200); assert.equal(Buffer.from(await rr.arrayBuffer()).toString(), 'AUDIO'); assert.deepEqual(modLog.pop(), { rec: 'r1', ok: true }, 'الطلب إلى الوحدة موقّع صحيحاً');
   assert.equal((await fetch(E.base + `/api/v2/kids/${kid.id}/habit-rec?habit=word&rid=zzz`, { headers: { 'x-session': dad } })).status, 404, 'تسجيل غير مسجّل في الحدث');
